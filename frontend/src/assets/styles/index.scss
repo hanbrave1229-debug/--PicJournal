@@ -1,0 +1,89 @@
+@use './theme.scss';
+
+// ── Reset ─────────────────────────────────────────────────────────────────
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: var(--no-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--no-bg-main);
+  color: var(--no-text-primary);
+}
+
+* { scroll-behavior: smooth; }
+
+// ── Typography utilities ──────────────────────────────────────────────────
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--no-text-primary);
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--no-text-primary);
+  margin-bottom: 16px;
+}
+
+// ── Badge utilities ───────────────────────────────────────────────────────
+.badge-exact {
+  background: rgba(248, 113, 113, 0.10);
+  color: var(--no-danger);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  font-family: var(--no-font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--no-radius-badge);
+}
+
+.badge-similar {
+  background: rgba(251, 191, 36, 0.10);
+  color: var(--no-warning);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  font-family: var(--no-font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--no-radius-badge);
+}
+
+.badge-burst {
+  background: var(--no-accent-subtle);
+  color: var(--no-accent);
+  border: 1px solid var(--no-accent-border);
+  font-family: var(--no-font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--no-radius-badge);
+}
+
+// ── Shared spinner ────────────────────────────────────────────────────────
+.no-spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid var(--no-border-low);
+  border-top-color: var(--no-text-muted);
+  border-radius: 50%;
+  animation: no-spin 0.8s linear infinite;
+
+  &--sm { width: 12px; height: 12px; }
+  &--lg { width: 24px; height: 24px; border-width: 3px; }
+}
+
+// ── Shared keyframes ──────────────────────────────────────────────────────
+@keyframes no-pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+@keyframes no-spin  { to{transform:rotate(360deg)} }
+@keyframes no-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

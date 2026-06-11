@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: photo-manager-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # 照片目录：将 NAS 真实路径 bind mount 进容器（只读）
+      - ${PHOTOS_DIR:-/mnt/photos}:/photos:ro
+      # 数据持久化：SQLite 数据库 + 缩略图缓存
+      - ${DATA_DIR:-./data}/db:/app/data/db
+      - ${DATA_DIR:-./data}/thumbnails:/app/data/thumbnails
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - THUMBNAILS_DIR=${THUMBNAILS_DIR}
+      - PHOTOS_ROOT=/photos
+      - WORKER_PROCESSES=${WORKER_PROCESSES:-4}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: photo-manager-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=http://backend:8000

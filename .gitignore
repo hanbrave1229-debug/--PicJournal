@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+*.egg-info/
+dist/
+build/
+.env
+
+# Node
+node_modules/
+dist/
+*.local
+
+# Database & data
+*.db
+*.db-wal
+*.db-shm
+data/thumbnails/
+data/photos/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# PDF
+相册功能模块规划.pdf

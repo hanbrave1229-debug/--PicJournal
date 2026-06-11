@@ -1,1 +1,1 @@
-# --PicJournal
+# PicJournal

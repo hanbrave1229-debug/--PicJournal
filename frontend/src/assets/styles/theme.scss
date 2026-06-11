@@ -1,0 +1,371 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// Nordic Obsidian Theme — Element Plus CSS Variable Overrides
+// 覆盖 Element Plus 所有核心 token，无需修改组件代码即可全局换肤
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── SCSS Design Tokens (供所有 scoped 样式引用) ────────────────────────────
+:root {
+  // ── Canvas ────────────────────────────────────────────────────────────────
+  --no-bg-main:        #0e0f11;   // 页面总背景（温润深炭黑）
+  --no-bg-card:        #15171a;   // 主卡片背景
+  --no-bg-card-hover:  #1e2126;   // 卡片 hover / 激活背景
+  --no-border-low:     #22252a;   // 低对比度边框
+
+  // ── Text ──────────────────────────────────────────────────────────────────
+  --no-text-primary:   #e5e7eb;   // 主文本
+  --no-text-secondary: #9ca3af;   // 次要文本
+  --no-text-muted:     #6b7280;   // 失效/辅助文本
+
+  // ── Accent ────────────────────────────────────────────────────────────────
+  --no-accent:         #34d399;   // 石楠绿，主强调色
+  --no-accent-dim:     rgba(52, 211, 153, 0.25);  // 发光光晕
+  --no-accent-subtle:  rgba(52, 211, 153, 0.10);  // Badge 背景
+  --no-accent-border:  rgba(52, 211, 153, 0.25);  // Badge 边框
+
+  // ── Functional ────────────────────────────────────────────────────────────
+  --no-success: #10b981;
+  --no-warning: #fbbf24;
+  --no-danger:  #f87171;
+  --no-info:    #60a5fa;
+
+  // ── Fonts ─────────────────────────────────────────────────────────────────
+  --no-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --no-font-mono: "JetBrains Mono", Monaco, Consolas, monospace;
+
+  // ── Radius ────────────────────────────────────────────────────────────────
+  --no-radius-card:   12px;
+  --no-radius-btn:     8px;
+  --no-radius-badge:   6px;
+  --no-radius-pill:   99px;
+
+  // ── Shadows ───────────────────────────────────────────────────────────────
+  --no-shadow-card:  0 4px 12px rgba(0, 0, 0, 0.15);
+  --no-shadow-hover: 0 12px 30px rgba(0, 0, 0, 0.45);
+  --no-shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.65);
+
+  // ── Motion ────────────────────────────────────────────────────────────────
+  --no-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --no-dur-fast:   0.15s;
+  --no-dur-normal: 0.25s;
+  --no-dur-slow:   0.35s;
+
+  // ══ Element Plus token overrides ══════════════════════════════════════════
+  --el-bg-color:           var(--no-bg-main);
+  --el-bg-color-page:      var(--no-bg-main);
+  --el-bg-color-overlay:   var(--no-bg-card);
+
+  --el-border-color:        var(--no-border-low);
+  --el-border-color-light:  var(--no-border-low);
+  --el-border-color-lighter:var(--no-border-low);
+  --el-border-color-extra-light: var(--no-border-low);
+
+  --el-border-radius-base:  var(--no-radius-card);
+  --el-border-radius-small: var(--no-radius-btn);
+  --el-border-radius-round: var(--no-radius-pill);
+
+  --el-text-color-primary:     var(--no-text-primary);
+  --el-text-color-regular:     var(--no-text-secondary);
+  --el-text-color-secondary:   var(--no-text-secondary);
+  --el-text-color-placeholder: var(--no-text-muted);
+  --el-text-color-disabled:    var(--no-text-muted);
+
+  --el-color-primary:          var(--no-accent);
+  --el-color-primary-light-3:  #5ccd8f;
+  --el-color-primary-light-5:  rgba(52, 211, 153, 0.5);
+  --el-color-primary-light-7:  rgba(52, 211, 153, 0.3);
+  --el-color-primary-light-8:  rgba(52, 211, 153, 0.15);
+  --el-color-primary-light-9:  rgba(52, 211, 153, 0.10);
+  --el-color-primary-dark-2:   #10b981;
+
+  --el-color-success:        var(--no-success);
+  --el-color-warning:        var(--no-warning);
+  --el-color-danger:         var(--no-danger);
+  --el-color-info:           var(--no-info);
+
+  --el-fill-color:           var(--no-bg-card);
+  --el-fill-color-light:     var(--no-bg-card-hover);
+  --el-fill-color-lighter:   var(--no-bg-card);
+  --el-fill-color-blank:     var(--no-bg-card);
+
+  --el-font-family:          var(--no-font-sans);
+  --el-font-size-base:       14px;
+
+  --el-box-shadow:           var(--no-shadow-card);
+  --el-box-shadow-light:     var(--no-shadow-card);
+
+  // ── Menu ──────────────────────────────────────────────────────────────────
+  --el-menu-bg-color:         var(--no-bg-card);
+  --el-menu-text-color:       var(--no-text-secondary);
+  --el-menu-active-color:     var(--no-accent);
+  --el-menu-hover-bg-color:   var(--no-bg-card-hover);
+  --el-menu-item-height:      48px;
+}
+
+// ── Element Plus component-level overrides ────────────────────────────────
+
+// ── Utility: soft-badge ───────────────────────────────────────────────
+.soft-badge {
+  background-color: var(--no-accent-subtle);
+  border: 1px solid var(--no-accent-border);
+  color: var(--no-accent);
+  font-family: var(--no-font-mono);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+
+  &--warning {
+    background-color: rgba(251, 191, 36, 0.10);
+    border-color: rgba(251, 191, 36, 0.30);
+    color: var(--no-warning);
+  }
+
+  &--danger {
+    background-color: rgba(248, 113, 113, 0.10);
+    border-color: rgba(248, 113, 113, 0.30);
+    color: var(--no-danger);
+  }
+}
+
+// Card
+.el-card {
+  background-color: var(--no-bg-card) !important;
+  border: 1px solid var(--no-border-low) !important;
+  border-radius: var(--no-radius-card) !important;
+  box-shadow: none !important;
+  transition: background-color var(--no-dur-normal) var(--no-ease),
+              transform        var(--no-dur-normal) var(--no-ease),
+              box-shadow       var(--no-dur-normal) var(--no-ease),
+              border-color     var(--no-dur-normal) var(--no-ease) !important;
+
+  &:hover {
+    background-color: var(--no-bg-card-hover) !important;
+    transform: translateY(-2px);
+    box-shadow: var(--no-shadow-hover) !important;
+    border-color: rgba(52, 211, 153, 0.3) !important;
+  }
+
+  .el-card__header {
+    border-bottom-color: var(--no-border-low) !important;
+    padding: 16px;
+  }
+
+  .el-card__body { padding: 16px; }
+}
+
+// Button — Primary
+.el-button--primary {
+  background-color: var(--no-accent) !important;
+  border-color: var(--no-accent) !important;
+  color: var(--no-bg-main) !important;
+  font-weight: 600 !important;
+  border-radius: var(--no-radius-btn) !important;
+
+  &:hover, &:focus {
+    background-color: #10b981 !important;
+    border-color: #10b981 !important;
+    box-shadow: 0 0 12px var(--no-accent-dim) !important;
+  }
+}
+
+// Button — Default
+.el-button--default,
+.el-button {
+  background-color: var(--no-bg-card-hover) !important;
+  border-color: var(--no-border-low) !important;
+  color: var(--no-text-primary) !important;
+  border-radius: var(--no-radius-btn) !important;
+  transition: border-color var(--no-dur-fast) var(--no-ease),
+              box-shadow   var(--no-dur-fast) var(--no-ease) !important;
+
+  &:hover, &:focus {
+    border-color: var(--no-accent) !important;
+    color: var(--no-accent) !important;
+    background-color: var(--no-bg-card-hover) !important;
+  }
+}
+
+// Select / Dropdown
+.el-select .el-input__wrapper,
+.el-input__wrapper {
+  background-color: var(--no-bg-card-hover) !important;
+  box-shadow: 0 0 0 1px var(--no-border-low) inset !important;
+  border-radius: var(--no-radius-btn) !important;
+
+  &.is-focus {
+    box-shadow: 0 0 0 1px var(--no-accent) inset !important;
+  }
+}
+
+.el-select-dropdown {
+  background-color: var(--no-bg-card) !important;
+  border: 1px solid var(--no-border-low) !important;
+  border-radius: var(--no-radius-card) !important;
+}
+
+.el-select-dropdown__item {
+  color: var(--no-text-primary) !important;
+
+  &.is-selected { color: var(--no-accent) !important; }
+
+  &:hover {
+    background-color: var(--no-bg-card-hover) !important;
+  }
+}
+
+// Checkbox
+.el-checkbox__label { color: var(--no-text-secondary) !important; }
+.el-checkbox__inner {
+  background-color: var(--no-bg-card-hover) !important;
+  border-color: var(--no-border-low) !important;
+  border-radius: 4px !important;
+}
+.el-checkbox.is-checked .el-checkbox__inner {
+  background-color: var(--no-accent) !important;
+  border-color: var(--no-accent) !important;
+}
+
+// Slider
+.el-slider__runway { background-color: var(--no-border-low) !important; }
+.el-slider__bar    { background-color: var(--no-accent) !important; }
+.el-slider__button {
+  border-color: var(--no-accent) !important;
+  background: var(--no-bg-main) !important;
+}
+
+// Menu
+.el-menu {
+  background-color: var(--no-bg-card) !important;
+  border-right: none !important;
+}
+
+.el-menu-item {
+  color: var(--no-text-secondary) !important;
+  border-radius: var(--no-radius-btn) !important;
+  margin: 2px 8px !important;
+  width: calc(100% - 16px) !important;
+  transition: background-color var(--no-dur-fast) var(--no-ease),
+              color             var(--no-dur-fast) var(--no-ease) !important;
+
+  &:hover {
+    background-color: var(--no-bg-card-hover) !important;
+    color: var(--no-text-primary) !important;
+  }
+
+  &.is-active {
+    background-color: var(--no-accent-subtle) !important;
+    color: var(--no-accent) !important;
+    font-weight: 600;
+
+    .el-icon { color: var(--no-accent) !important; }
+  }
+}
+
+// Dialog / Drawer
+.el-dialog {
+  background-color: var(--no-bg-card) !important;
+  border: 1px solid var(--no-border-low) !important;
+  border-radius: var(--no-radius-card) !important;
+  box-shadow: var(--no-shadow-modal) !important;
+}
+
+.el-dialog__title  { color: var(--no-text-primary) !important; }
+.el-dialog__header { border-bottom: 1px solid var(--no-border-low) !important; }
+
+// Empty
+.el-empty__description p { color: var(--no-text-muted) !important; }
+
+// Table
+.el-table {
+  background-color: var(--no-bg-card) !important;
+  --el-table-bg-color:         var(--no-bg-card);
+  --el-table-tr-bg-color:      var(--no-bg-card);
+  --el-table-header-bg-color:  var(--no-bg-card-hover);
+  --el-table-row-hover-bg-color: var(--no-bg-card-hover);
+  --el-table-border-color:     var(--no-border-low);
+  --el-table-text-color:       var(--no-text-primary);
+  --el-table-header-text-color: var(--no-text-secondary);
+}
+
+// Popover / Tooltip
+.el-popper.is-dark {
+  background: var(--no-bg-card-hover) !important;
+  border: 1px solid var(--no-border-low) !important;
+  color: var(--no-text-primary) !important;
+}
+
+// Progress
+.el-progress-bar__outer {
+  background-color: var(--no-bg-card-hover) !important;
+  border-radius: var(--no-radius-pill) !important;
+}
+.el-progress-bar__inner {
+  background-color: var(--no-accent) !important;
+  border-radius: var(--no-radius-pill) !important;
+}
+
+// Tag
+.el-tag {
+  border-radius: var(--no-radius-badge) !important;
+  border-color: var(--no-accent-border) !important;
+  background-color: var(--no-accent-subtle) !important;
+  color: var(--no-accent) !important;
+  font-family: var(--no-font-mono) !important;
+  font-size: 11px !important;
+}
+
+// Scrollbar
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--no-border-low);
+  border-radius: 4px;
+
+  &:hover { background: var(--no-text-muted); }
+}
+
+// ElMessage toast — capsule style
+.el-message {
+  background-color: var(--no-bg-card) !important;
+  border: 1px solid var(--no-border-low) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6) !important;
+  padding: 12px 24px !important;
+
+  .el-message__content {
+    color: var(--no-text-primary) !important;
+    font-size: 13px !important;
+  }
+
+  &.el-message--success .el-message__content {
+    color: var(--no-accent) !important;
+    font-weight: 500;
+  }
+
+  &.el-message--warning .el-message__content {
+    color: var(--no-warning) !important;
+  }
+
+  &.el-message--error .el-message__content {
+    color: var(--no-danger) !important;
+  }
+}
+
+// ── Skeleton pulse ────────────────────────────────────────────────────────
+@keyframes no-skeleton-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 0.15; }
+}
+
+.no-skeleton {
+  background: var(--no-bg-card-hover);
+  border-radius: var(--no-radius-card);
+  animation: no-skeleton-pulse 1.8s var(--no-ease) infinite;
+}
