@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
+    libgl1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,7 +21,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "\
 from insightface.app import FaceAnalysis; \
 app = FaceAnalysis(name='buffalo_sc', providers=['CPUExecutionProvider']); \
-app.prepare(ctx_id=0)" || echo "[INFO] InsightFace model pre-download skipped"
+app.prepare(ctx_id=0); \
+print('InsightFace buffalo_sc models downloaded OK')"
 
 # 复制应用代码
 COPY app/ ./app/
