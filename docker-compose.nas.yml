@@ -1,0 +1,21 @@
+services:
+  backend:
+    image: ghcr.io/hanbrave1229-debug/picjournal-backend:latest
+    container_name: photo-manager-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - /volume1/照片:/photos:ro                          # 改成你的照片路径
+      - /volume1/docker/picjournal/db:/app/data/db
+      - /volume1/docker/picjournal/thumbnails:/app/data/thumbnails
+      - /volume1/docker/picjournal/geo:/app/data/geo
+
+  frontend:
+    image: ghcr.io/hanbrave1229-debug/picjournal-frontend:latest
+    container_name: photo-manager-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
