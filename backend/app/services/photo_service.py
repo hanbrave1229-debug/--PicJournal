@@ -22,6 +22,8 @@ async def list_photos(
     order: str = "desc",
     only_duplicates: bool = False,
     min_sharpness: float | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> tuple[list[Photo], int]:
     """
     Return (photos, total_count) for the given page/filter.
@@ -48,6 +50,13 @@ async def list_photos(
 
     if min_sharpness is not None:
         stmt = stmt.where(Photo.sharpness_score >= min_sharpness)
+
+    if date_from is not None:
+        stmt = stmt.where(Photo.taken_at >= date_from)
+
+    if date_to is not None:
+        # Include the full last day
+        stmt = stmt.where(Photo.taken_at <= date_to + "T23:59:59")
 
     # Total count
     count_stmt = select(func.count()).select_from(stmt.subquery())

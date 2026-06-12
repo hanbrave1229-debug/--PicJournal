@@ -42,8 +42,10 @@ async def get_thumbnail(
 
     # Check cached path stored in DB
     cached_path: str | None = getattr(photo, f"thumbnail_{size}", None)
+    _CACHE_HEADERS = {"Cache-Control": "max-age=31536000, immutable"}
+
     if cached_path and Path(cached_path).exists():
-        return FileResponse(cached_path, media_type="image/jpeg")
+        return FileResponse(cached_path, media_type="image/jpeg", headers=_CACHE_HEADERS)
 
     # On-demand generation
     results = await generate_thumbnails(photo.file_path, photo.id)
@@ -57,4 +59,4 @@ async def get_thumbnail(
     db.add(photo)
     await db.commit()
 
-    return FileResponse(thumb_path, media_type="image/jpeg")
+    return FileResponse(thumb_path, media_type="image/jpeg", headers=_CACHE_HEADERS)

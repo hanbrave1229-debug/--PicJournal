@@ -1,7 +1,7 @@
 """
 Album service — CRUD, photo association, and trash management.
 """
-import os
+import errno
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +13,18 @@ from sqlalchemy.orm import selectinload
 
 from app.models.album import Album, AlbumPhoto
 from app.models.photo import Photo
+
+
+def _cross_device_safe_move(src: str, dst: str) -> None:
+    """shutil.move that falls back to copy+unlink on EXDEV (errno 18)."""
+    try:
+        shutil.move(src, dst)
+    except OSError as exc:
+        if exc.errno == errno.EXDEV:
+            shutil.copy2(src, dst)
+            Path(src).unlink(missing_ok=True)
+        else:
+            raise
 
 
 # ── Album CRUD ────────────────────────────────────────────────────────────────
@@ -32,8 +44,13 @@ async def create_album(
     )
     db.add(album)
     await db.commit()
-    await db.refresh(album)
-    return album
+    # Re-query with eager load to avoid lazy-load in async context
+    result = await db.execute(
+        select(Album)
+        .where(Album.id == album.id)
+        .options(selectinload(Album.album_photos))
+    )
+    return result.scalar_one()
 
 
 async def list_albums(db: AsyncSession) -> list[Album]:
@@ -156,20 +173,27 @@ def _trash_dir(photo_path: str) -> Path:
 
 
 async def soft_delete_photo(db: AsyncSession, photo: Photo) -> Photo:
-    """Mark photo as deleted and move file to .trash/."""
+    """Mark photo as deleted and move file to .trash/ when possible.
+
+    Gracefully handles:
+    - Read-only mounts (photos mounted as :ro on NAS)
+    - Cross-device moves (errno 18 / EXDEV)
+    - Missing files
+    """
     if photo.is_deleted:
         return photo
 
     src = Path(photo.file_path)
     if src.exists():
-        trash = _trash_dir(photo.file_path)
-        trash.mkdir(parents=True, exist_ok=True)
-        # Use UUID-safe name to avoid collisions
-        dest = trash / f"{photo.id}_{src.name}"
         try:
-            shutil.move(str(src), str(dest))
+            trash = _trash_dir(photo.file_path)
+            trash.mkdir(parents=True, exist_ok=True)
+            dest = trash / f"{photo.id}_{src.name}"
+            _cross_device_safe_move(str(src), str(dest))
         except (OSError, shutil.Error):
-            pass  # File already missing or move failed — still mark deleted
+            # Read-only mount, permission error, or other IO failure — still
+            # mark deleted in DB so the photo is hidden from the UI.
+            pass
 
     photo.is_deleted = True
     photo.deleted_at = datetime.now(timezone.utc)

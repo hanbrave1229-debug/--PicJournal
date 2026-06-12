@@ -17,10 +17,10 @@
   --no-text-muted:     #6b7280;   // 失效/辅助文本
 
   // ── Accent ────────────────────────────────────────────────────────────────
-  --no-accent:         #34d399;   // 石楠绿，主强调色
-  --no-accent-dim:     rgba(52, 211, 153, 0.25);  // 发光光晕
-  --no-accent-subtle:  rgba(52, 211, 153, 0.10);  // Badge 背景
-  --no-accent-border:  rgba(52, 211, 153, 0.25);  // Badge 边框
+  --no-accent:         #10b981;   // Emerald-500，深绿主强调色（白字可读性更佳）
+  --no-accent-dim:     rgba(16, 185, 129, 0.25);  // 发光光晕
+  --no-accent-subtle:  rgba(16, 185, 129, 0.10);  // Badge 背景
+  --no-accent-border:  rgba(16, 185, 129, 0.25);  // Badge 边框
 
   // ── Functional ────────────────────────────────────────────────────────────
   --no-success: #10b981;
@@ -70,12 +70,12 @@
   --el-text-color-disabled:    var(--no-text-muted);
 
   --el-color-primary:          var(--no-accent);
-  --el-color-primary-light-3:  #5ccd8f;
-  --el-color-primary-light-5:  rgba(52, 211, 153, 0.5);
-  --el-color-primary-light-7:  rgba(52, 211, 153, 0.3);
-  --el-color-primary-light-8:  rgba(52, 211, 153, 0.15);
-  --el-color-primary-light-9:  rgba(52, 211, 153, 0.10);
-  --el-color-primary-dark-2:   #10b981;
+  --el-color-primary-light-3:  #34d399;
+  --el-color-primary-light-5:  rgba(16, 185, 129, 0.5);
+  --el-color-primary-light-7:  rgba(16, 185, 129, 0.3);
+  --el-color-primary-light-8:  rgba(16, 185, 129, 0.15);
+  --el-color-primary-light-9:  rgba(16, 185, 129, 0.10);
+  --el-color-primary-dark-2:   #059669;
 
   --el-color-success:        var(--no-success);
   --el-color-warning:        var(--no-warning);
@@ -159,14 +159,15 @@
 .el-button--primary {
   background-color: var(--no-accent) !important;
   border-color: var(--no-accent) !important;
-  color: var(--no-bg-main) !important;
+  color: #fff !important;
   font-weight: 600 !important;
   border-radius: var(--no-radius-btn) !important;
 
   &:hover, &:focus {
-    background-color: #10b981 !important;
-    border-color: #10b981 !important;
+    background-color: #059669 !important;
+    border-color: #059669 !important;
     box-shadow: 0 0 12px var(--no-accent-dim) !important;
+    color: #fff !important;
   }
 }
 

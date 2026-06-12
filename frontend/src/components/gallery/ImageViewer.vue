@@ -68,8 +68,12 @@
               </div>
             </div>
 
-            <!-- More -->
-            <button class="iv-icon-btn" title="更多" @click="showToast('更多操作面板已挂载（开发中）')">
+            <!-- More — toggles EXIF/AI sidebar -->
+            <button
+              :class="['iv-icon-btn', showInfo && 'iv-icon-btn--active']"
+              title="更多信息"
+              @click="showInfo = !showInfo"
+            >
               <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <circle cx="12" cy="5" r=".75" fill="currentColor"/>
                 <circle cx="12" cy="12" r=".75" fill="currentColor"/>
@@ -171,6 +175,13 @@
           <button class="iv-tb-icon" title="全屏" @click="toggleFullscreen">
             <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9m5.25 11.25v-4.5m0 4.5h-4.5m4.5 0L15 15"/>
+            </svg>
+          </button>
+
+          <!-- Archive -->
+          <button class="iv-tb-icon iv-tb-icon--archive" title="归档（从主时间轴隐藏）" @click="onArchive">
+            <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-.375c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v.375c0 .621.504 1.125 1.125 1.125z"/>
             </svg>
           </button>
 
@@ -324,6 +335,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import type { Photo } from '@/types/photo'
 import { formatBytes } from '@/utils/format'
 import { useAlbumStore } from '@/stores/useAlbumStore'
+import { archiveApi } from '@/api/archive'
 
 const albumStore = useAlbumStore()
 
@@ -366,9 +378,11 @@ const liked = computed(() => props.photo != null && likedIds.value.has(props.pho
 // ── Computed display ─────────────────────────────────────────────────
 const thumbUrl = computed(() => {
   if (!props.photo) return ''
+  // Default: 1080p thumbnail for a high-quality view without loading the raw file.
+  // "查看原图" serves the raw file directly via the photos/file endpoint.
   return isOriginal.value
-    ? `/api/v1/thumbnails/${props.photo.id}?size=1080`
-    : `/api/v1/thumbnails/${props.photo.id}?size=256`
+    ? `/api/v1/photos/${props.photo.id}/file`
+    : `/api/v1/thumbnails/${props.photo.id}?size=1080`
 })
 
 const exifTime = computed(() => {
@@ -437,6 +451,17 @@ function onDelete() {
   if (props.photo) {
     emit('soft-delete', props.photo.id)
     emit('toast', `已将照片「${props.photo.file_name}」移入回收站`)
+  }
+}
+
+async function onArchive() {
+  if (!props.photo) return
+  try {
+    await archiveApi.archive(props.photo.id)
+    emit('toast', '已归档，主时间轴已隐藏')
+    emit('close')
+  } catch {
+    emit('toast', '归档失败，请重试')
   }
 }
 
@@ -843,6 +868,7 @@ onUnmounted(() => {
   display: flex;
   &:hover { background: var(--no-border-low); color: #fff; }
   &--danger:hover { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+  &--archive:hover { background: rgba(96, 165, 250, 0.15); color: #93c5fd; }
   &--active { background: var(--no-text-primary); color: var(--no-bg-main); }
 }
 

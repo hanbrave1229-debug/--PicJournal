@@ -48,7 +48,7 @@
         @dblclick="openViewer(photo)"
       >
         <img
-          :src="`/api/v1/thumbnails/${photo.id}/256`"
+          :src="`/api/v1/thumbnails/${photo.id}?size=256`"
           class="ad-thumb"
           loading="lazy"
         />

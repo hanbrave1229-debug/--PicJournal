@@ -128,7 +128,7 @@
           <div
             v-for="month in sortedMonths(year)"
             :key="month"
-            :id="'tl-' + year + '-' + month"
+            :id="`tl-${year}-${month}`"
           >
             <div
               v-for="day in sortedDays(year, month)"
@@ -226,8 +226,8 @@
         <div
           v-for="(key, idx) in rulerKeys"
           :key="key"
-          class="gl-ruler-item"
-          @click="scrollToDate('tl-' + key.split('-')[0])"
+          :class="['gl-ruler-item', activeRulerKey === key && 'is-active']"
+          @click="scrollToDate(key)"
         >
           <div class="gl-ruler-tip">
             {{ key.split('-')[0] }}年{{ parseInt(key.split('-')[1]) }}月
@@ -383,7 +383,7 @@ function sortedDays(year: string, month: string): string[] {
   return Object.keys(groupedPhotos.value[year]?.[month] ?? {}).sort((a, b) => Number(b) - Number(a))
 }
 
-// ── Ruler ─────────────────────────────────────────────────────────────
+// ── Ruler + Scroll Spy ────────────────────────────────────────────────
 const rulerKeys = computed<string[]>(() => {
   const s = new Set<string>()
   for (const p of photoStore.photos) {
@@ -395,11 +395,29 @@ const rulerKeys = computed<string[]>(() => {
   return [...s].sort((a, b) => b.localeCompare(a))
 })
 
-function scrollToDate(id: string) {
-  const el = document.getElementById(id)
+const activeRulerKey = ref<string>('')
+
+function scrollToDate(key: string) {
+  // Try month-level element first, fall back to year
+  const year = key.split('-')[0]
+  const el = document.getElementById(`tl-${key}`) ?? document.getElementById(`tl-${year}`)
   if (el) {
     const y = el.getBoundingClientRect().top + window.scrollY - 80
     window.scrollTo({ top: y, behavior: 'smooth' })
+    activeRulerKey.value = key
+  }
+}
+
+/** Update the active ruler key based on scroll position. */
+function onContentScroll() {
+  for (const key of rulerKeys.value) {
+    const year = key.split('-')[0]
+    const el = document.getElementById(`tl-${key}`) ?? document.getElementById(`tl-${year}`)
+    if (!el) continue
+    const rect = el.getBoundingClientRect()
+    if (rect.top <= 120) {
+      activeRulerKey.value = key
+    }
   }
 }
 
@@ -550,11 +568,14 @@ onMounted(async () => {
     { threshold: 0.1 },
   )
   if (sentinel.value) observer.observe(sentinel.value)
+
+  window.addEventListener('scroll', onContentScroll, { passive: true })
 })
 
 onUnmounted(() => {
   observer?.disconnect()
   if (toastTimer) clearTimeout(toastTimer)
+  window.removeEventListener('scroll', onContentScroll)
 })
 
 // Re-fetch when filter changes
@@ -976,6 +997,9 @@ function clearNLSearch(): void {
   &:hover .gl-ruler-dot { background: var(--no-accent); }
   &:hover .gl-ruler-label { color: var(--no-accent); }
   &:hover .gl-ruler-tip { opacity: 1; }
+
+  &.is-active .gl-ruler-dot { background: var(--no-accent); width: 8px; height: 8px; }
+  &.is-active .gl-ruler-label { color: var(--no-accent); }
 }
 
 .gl-ruler-tip {

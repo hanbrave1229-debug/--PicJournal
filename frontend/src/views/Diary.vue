@@ -91,9 +91,12 @@
         <div class="dialog-photo-panel">
           <div class="panel-label">
             <span>今日快照 (已选 {{ selectedPhotoIds.length }})</span>
-            <span class="panel-link" @click="togglePicker">
-              {{ pickerOpen ? '收起' : '选择照片' }}
-            </span>
+            <div class="panel-label-actions">
+              <span class="panel-link" @click="openCrossMonthPicker">跨月挑选</span>
+              <span class="panel-link" @click="togglePicker">
+                {{ pickerOpen ? '收起' : '本月照片' }}
+              </span>
+            </div>
           </div>
 
           <!-- Inline photo picker grid -->
@@ -106,7 +109,7 @@
                 :class="{ 'is-selected': selectedPhotoIds.includes(photo.id) }"
                 @click="togglePickerPhoto(photo.id)"
               >
-                <img :src="`/api/v1/thumbnails/${photo.id}/256`" alt="" loading="lazy" />
+                <img :src="`/api/v1/thumbnails/${photo.id}?size=256`" alt="" loading="lazy" />
                 <div v-if="selectedPhotoIds.includes(photo.id)" class="picker-check">
                   <el-icon size="9" color="#fff"><Check /></el-icon>
                 </div>
@@ -123,12 +126,13 @@
               v-for="pid in selectedPhotoIds"
               :key="pid"
               class="photo-thumb selected"
-              @click="deselectPhoto(pid)"
+              @click="previewStripPhoto(pid)"
             >
-              <img :src="`/api/v1/thumbnails/${pid}/256`" alt="" />
-              <div class="thumb-check">
-                <el-icon size="10" color="#fff"><Check /></el-icon>
-              </div>
+              <img :src="`/api/v1/thumbnails/${pid}?size=256`" alt="" />
+              <!-- X to remove -->
+              <button class="thumb-remove" title="移出" @click.stop="deselectPhoto(pid)">
+                <el-icon size="8" color="#fff"><Close /></el-icon>
+              </button>
             </div>
             <div v-if="selectedPhotoIds.length === 0" class="photo-empty-hint">
               从图库选择照片后将显示在此处
@@ -139,7 +143,7 @@
           <div
             class="cover-preview"
             :style="selectedPhotoIds.length > 0
-              ? { backgroundImage: `url(/api/v1/thumbnails/${selectedPhotoIds[0]}/256)` }
+              ? { backgroundImage: `url(/api/v1/thumbnails/${selectedPhotoIds[0]}?size=256)` }
               : {}"
           >
             <div v-if="selectedPhotoIds.length === 0" class="cover-empty">
@@ -214,6 +218,58 @@
       </div>
     </el-dialog>
 
+    <!-- ── Strip photo preview overlay ───────────────────────────────────── -->
+    <Teleport to="body">
+      <div v-if="stripPreviewUrl" class="strip-preview-mask" @click="stripPreviewUrl = null">
+        <img :src="stripPreviewUrl" class="strip-preview-img" @click.stop />
+        <button class="strip-preview-close" @click="stripPreviewUrl = null">
+          <el-icon size="20" color="#fff"><Close /></el-icon>
+        </button>
+      </div>
+    </Teleport>
+
+    <!-- ── Cross-month picker dialog ──────────────────────────────────────── -->
+    <el-dialog
+      v-model="crossMonthVisible"
+      title="跨月挑选照片"
+      width="720px"
+      class="diary-dialog cross-month-dialog"
+      destroy-on-close
+      :append-to-body="true"
+    >
+      <div class="cm-header">
+        <el-date-picker
+          v-model="crossMonthDate"
+          type="month"
+          placeholder="选择月份"
+          format="YYYY年MM月"
+          value-format="YYYY-MM"
+          @change="loadCrossMonthPhotos"
+        />
+        <span class="cm-hint">已选 {{ selectedPhotoIds.length }} 张</span>
+      </div>
+      <div v-loading="loadingCrossMonth" class="cm-grid">
+        <div
+          v-for="photo in crossMonthPhotos"
+          :key="photo.id"
+          class="cm-thumb"
+          :class="{ 'is-selected': selectedPhotoIds.includes(photo.id) }"
+          @click="toggleCrossMonthPhoto(photo.id)"
+        >
+          <img :src="`/api/v1/thumbnails/${photo.id}?size=256`" alt="" loading="lazy" />
+          <div v-if="selectedPhotoIds.includes(photo.id)" class="cm-check">
+            <el-icon size="9" color="#fff"><Check /></el-icon>
+          </div>
+        </div>
+        <div v-if="!loadingCrossMonth && crossMonthPhotos.length === 0" class="cm-empty">
+          {{ crossMonthDate ? '该月暂无照片' : '请先选择月份' }}
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="crossMonthVisible = false">完成</el-button>
+      </template>
+    </el-dialog>
+
     <!-- ── Polaroid Dialog ─────────────────────────────────────────────────── -->
     <el-dialog
       v-model="polaroidVisible"
@@ -228,7 +284,7 @@
           <div
             class="polaroid-photo"
             :style="selectedPhotoIds.length > 0
-              ? { backgroundImage: `url(/api/v1/thumbnails/${selectedPhotoIds[0]}/256)` }
+              ? { backgroundImage: `url(/api/v1/thumbnails/${selectedPhotoIds[0]}?size=256)` }
               : {}"
           />
           <!-- Meta row -->
@@ -246,7 +302,7 @@
 
         <div class="polaroid-actions">
           <p class="polaroid-hint">卡片具有真实的物理噪点质感。</p>
-          <el-button type="primary" color="#34d399" class="save-btn" @click="downloadPolaroid">
+          <el-button type="primary" class="save-btn" @click="downloadPolaroid">
             导出高清图片
           </el-button>
         </div>
@@ -259,7 +315,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  ArrowLeft, ArrowRight, Check, EditPen, MagicStick, Picture,
+  ArrowLeft, ArrowRight, Check, Close, EditPen, MagicStick, Picture,
 } from '@element-plus/icons-vue'
 import { diaryApi } from '@/api/diary'
 import { photoApi } from '@/api/photos'
@@ -303,16 +359,29 @@ const pickerOpen     = ref(false)
 const pickerPhotos   = ref<Photo[]>([])
 const loadingPicker  = ref(false)
 
+// All photos we've loaded (from picker + existing diary) — used for geo lookup
+const allPhotosMap = ref<Map<number, Photo>>(new Map())
+
+// Strip photo preview (simple lightbox)
+const stripPreviewUrl = ref<string | null>(null)
+
+// Cross-month picker
+const crossMonthVisible  = ref(false)
+const crossMonthDate     = ref('')         // 'YYYY-MM' string
+const crossMonthPhotos   = ref<Photo[]>([])
+const loadingCrossMonth  = ref(false)
+
 // ── Computed ──────────────────────────────────────────────────────────────────
 
 /**
  * Geo text for the cover photo (first selected photo).
  * Returns "省·市" if available, null otherwise.
+ * Uses allPhotosMap so existing diary photos without picker open also work.
  */
 const coverPhotoGeo = computed<string | null>(() => {
   if (selectedPhotoIds.value.length === 0) return null
   const coverId = selectedPhotoIds.value[0]
-  const photo = pickerPhotos.value.find(p => p.id === coverId)
+  const photo = allPhotosMap.value.get(coverId)
   if (!photo) return null
   const parts = [photo.province, photo.city].filter(Boolean)
   return parts.length > 0 ? parts.join('·') : null
@@ -432,6 +501,10 @@ async function openDialog(day: number, existing: DiaryCalendarItem | null): Prom
     try {
       const { data } = await diaryApi.getByDate(isoDate(day))
       selectedPhotoIds.value = data.photo_ids
+      // Load photo details into allPhotosMap so geo works without opening picker
+      if (data.photo_ids.length > 0) {
+        loadPhotosIntoMap(data.photo_ids)
+      }
     } catch {
       selectedPhotoIds.value = []
     }
@@ -441,6 +514,26 @@ async function openDialog(day: number, existing: DiaryCalendarItem | null): Prom
     selectedPhotoIds.value = []
   }
   dialogVisible.value = true
+}
+
+/** Fetch individual photo details and merge into allPhotosMap. */
+async function loadPhotosIntoMap(ids: number[]): Promise<void> {
+  const unknownIds = ids.filter(id => !allPhotosMap.value.has(id))
+  if (unknownIds.length === 0) return
+  try {
+    // Batch fetch via list endpoint with id filter not supported — fetch individually (cap at 10)
+    const fetches = unknownIds.slice(0, 10).map(id =>
+      photoApi.get(id).then(({ data }) => {
+        allPhotosMap.value.set(data.id, data)
+      }).catch(() => {/* ignore */})
+    )
+    await Promise.all(fetches)
+  } catch { /* ignore */ }
+}
+
+/** Open a strip photo in a simple full-screen preview overlay. */
+function previewStripPhoto(pid: number): void {
+  stripPreviewUrl.value = `/api/v1/thumbnails/${pid}?size=1080`
 }
 
 function deselectPhoto(photoId: number): void {
@@ -455,12 +548,62 @@ async function togglePicker(): Promise<void> {
     try {
       const { data } = await photoApi.list({ page_size: 80, sort_by: 'taken_at', order: 'desc' })
       pickerPhotos.value = data.items
+      // Merge into allPhotosMap for geo lookup
+      for (const p of data.items) allPhotosMap.value.set(p.id, p)
     } catch {
       ElMessage.error('加载照片列表失败')
     } finally {
       loadingPicker.value = false
     }
   }
+}
+
+// ── Cross-month picker ────────────────────────────────────────────────────────
+
+/** Load photos for the selected month in the cross-month picker. */
+async function loadCrossMonthPhotos(): Promise<void> {
+  if (!crossMonthDate.value) return
+  // crossMonthDate is a Date object from el-date-picker type="month"
+  const d = crossMonthDate.value instanceof Date ? crossMonthDate.value : new Date(crossMonthDate.value)
+  const year  = d.getFullYear()
+  const month = d.getMonth() + 1
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`
+  const endDay    = new Date(year, month, 0).getDate()
+  const endDate   = `${year}-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+
+  loadingCrossMonth.value = true
+  try {
+    const { data } = await photoApi.list({
+      page_size: 100,
+      sort_by: 'taken_at',
+      order: 'asc',
+      date_from: startDate,
+      date_to: endDate,
+    })
+    crossMonthPhotos.value = data.items
+    for (const p of data.items) allPhotosMap.value.set(p.id, p)
+  } catch {
+    ElMessage.error('加载跨月照片失败')
+  } finally {
+    loadingCrossMonth.value = false
+  }
+}
+
+/** Toggle a photo from the cross-month picker into selectedPhotoIds. */
+function toggleCrossMonthPhoto(id: number): void {
+  const idx = selectedPhotoIds.value.indexOf(id)
+  if (idx === -1) {
+    selectedPhotoIds.value.push(id)
+  } else {
+    selectedPhotoIds.value.splice(idx, 1)
+  }
+}
+
+function openCrossMonthPicker(): void {
+  const now2 = new Date()
+  crossMonthDate.value = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, '0')}`
+  crossMonthPhotos.value = []
+  crossMonthVisible.value = true
 }
 
 /** Toggle a photo in/out of the selection. */
@@ -899,6 +1042,26 @@ onMounted(() => { loadMonth() })
   justify-content: center;
 }
 
+.thumb-remove {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(248, 113, 113, 0.9);
+  border: 1.5px solid var(--no-bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  z-index: 5;
+  transition: background 0.15s;
+
+  &:hover { background: #f87171; }
+}
+
 .photo-empty-hint {
   font-size: 12px;
   color: var(--no-text-disabled);
@@ -1133,7 +1296,7 @@ onMounted(() => { loadMonth() })
 }
 
 .save-btn {
-  color: var(--no-bg-main) !important;
+  color: #fff !important;
 }
 
 // ── Polaroid ──────────────────────────────────────────────────────────────────
@@ -1229,5 +1392,118 @@ onMounted(() => { loadMonth() })
   font-size: 13px;
   color: var(--no-text-muted);
   margin: 0 0 16px;
+}
+
+// ── Panel label actions ───────────────────────────────────────────────────────
+.panel-label-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+// ── Strip preview overlay ─────────────────────────────────────────────────────
+.strip-preview-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.strip-preview-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+}
+
+.strip-preview-close {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+
+  &:hover { background: rgba(255, 255, 255, 0.25); }
+}
+
+// ── Cross-month picker dialog ─────────────────────────────────────────────────
+.cm-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.cm-hint {
+  font-size: 13px;
+  color: var(--no-text-muted);
+}
+
+.cm-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 4px;
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: var(--no-border-low); border-radius: 2px; }
+}
+
+.cm-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  &:hover { opacity: 0.85; }
+
+  &.is-selected { border-color: var(--no-accent); }
+}
+
+.cm-check {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--no-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cm-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 40px;
+  color: var(--no-text-disabled);
+  font-size: 13px;
 }
 </style>

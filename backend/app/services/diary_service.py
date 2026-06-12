@@ -27,7 +27,7 @@ from app.schemas.diary import (
 def _thumbnail_url(photo: Photo) -> str | None:
     """Return a usable thumbnail URL from the photo record."""
     if photo.thumbnail_256:
-        return f"/api/v1/thumbnails/{photo.id}/256"
+        return f"/api/v1/thumbnails/{photo.id}?size=256"
     return None
 
 

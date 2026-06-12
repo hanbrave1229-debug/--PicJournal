@@ -69,4 +69,8 @@ export interface PhotoListParams {
   order?: 'asc' | 'desc'
   only_duplicates?: boolean
   min_sharpness?: number
+  /** Filter: only photos taken on or after this date (YYYY-MM-DD) */
+  date_from?: string
+  /** Filter: only photos taken on or before this date (YYYY-MM-DD) */
+  date_to?: string
 }
