@@ -1,11 +1,12 @@
 FROM python:3.12-slim
 
-# 系统依赖：OpenCV headless + curl(healthcheck) + cmake/build-essential for dlib
+# 系统依赖：OpenCV headless + curl(healthcheck) + cmake/build-essential/git for dlib
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     curl \
+    git \
     cmake \
     build-essential \
     libopenblas-dev \
@@ -14,11 +15,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# 预编译 dlib（独立 layer，由 GHA cache 缓存，后续代码改动不重新编译）
-# face-recognition-models 提供人脸模型文件（纯 Python wheel，无需编译）
-RUN pip install --no-cache-dir "dlib==19.24.6" "face-recognition-models==0.3.0"
+# Step 1: 预编译 dlib（独立 layer，GHA cache 缓存，后续代码改动不重新编译）
+RUN pip install --no-cache-dir "dlib==19.24.6"
 
-# 安装其余 Python 依赖（含 face-recognition，此时 dlib 已装好，跳过重复编译）
+# Step 2: 从官方 git 源安装 face_recognition_models（PyPI 版本有兼容性问题）
+RUN pip install --no-cache-dir "git+https://github.com/ageitgey/face_recognition_models"
+
+# Step 3: 安装其余 Python 依赖（face-recognition 此时跳过 dlib 和 models 的重复安装）
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

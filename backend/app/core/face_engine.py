@@ -22,10 +22,12 @@ logger = logging.getLogger(__name__)
 try:
     import face_recognition  # type: ignore
     FACE_RECOGNITION_AVAILABLE = True
-except ImportError:
+except BaseException:
+    # face_recognition calls quit() (SystemExit) when face_recognition_models is missing.
+    # Catch BaseException (not just ImportError) to prevent crashing the backend process.
     face_recognition = None  # type: ignore
     FACE_RECOGNITION_AVAILABLE = False
-    logger.warning("face_recognition not installed — face detection unavailable")
+    logger.warning("face_recognition unavailable (dlib or face_recognition_models missing)")
 
 try:
     from sklearn.cluster import DBSCAN  # type: ignore
