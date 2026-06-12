@@ -9,6 +9,7 @@ export interface SmartAlbumRules {
   country?: string | null
   province?: string | null
   city?: string | null
+  tags_contain?: string | null
 }
 
 /** A user-created (or smart) album */
@@ -17,6 +18,7 @@ export interface Album {
   title: string
   description: string | null
   cover_photo_id: number | null
+  cover_thumbnail_url?: string | null
   is_smart: boolean
   smart_rules: string | null
   photo_count: number
