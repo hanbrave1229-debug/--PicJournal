@@ -145,7 +145,10 @@ async def get_month_entries(
     items: list[DiaryCalendarItem] = []
     for d in diaries:
         cover_url: str | None = None
-        if d.diary_photos:
+        # Use explicitly stored cover_photo_id first; fall back to first associated photo
+        if d.cover_photo_id:
+            cover_url = f"/api/v1/thumbnails/{d.cover_photo_id}?size=256"
+        elif d.diary_photos:
             first = d.diary_photos[0].photo
             if first:
                 cover_url = _thumbnail_url(first)

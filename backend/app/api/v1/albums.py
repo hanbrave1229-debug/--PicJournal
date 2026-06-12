@@ -170,11 +170,14 @@ async def remove_photos(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _to_response(album) -> AlbumResponse:
-    cover_url = (
-        f"/api/v1/thumbnails/{album.cover_photo_id}?size=256"
-        if album.cover_photo_id
-        else None
-    )
+    # Explicit cover > first album photo > None
+    album_photos = album.album_photos if hasattr(album, "album_photos") else []
+    cover_pid: int | None = album.cover_photo_id
+    if not cover_pid and album_photos:
+        cover_pid = album_photos[0].photo_id
+
+    cover_url = f"/api/v1/thumbnails/{cover_pid}?size=256" if cover_pid else None
+
     return AlbumResponse(
         id=album.id,
         title=album.title,
@@ -183,7 +186,7 @@ def _to_response(album) -> AlbumResponse:
         cover_thumbnail_url=cover_url,
         is_smart=album.is_smart,
         smart_rules=album.smart_rules,
-        photo_count=len(album.album_photos) if hasattr(album, "album_photos") else 0,
+        photo_count=len(album_photos),
         created_at=album.created_at,
         updated_at=album.updated_at,
     )

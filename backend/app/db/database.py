@@ -75,6 +75,23 @@ async def _run_migrations(conn) -> None:
             text("ALTER TABLE diaries ADD COLUMN cover_photo_id INTEGER REFERENCES photos(id)")
         )
 
+    # Face embedding dimension migration: face_recognition was 128-dim, insightface is 512-dim.
+    # Clear incompatible legacy face data so the next /persons/run starts clean.
+    try:
+        sample = await conn.execute(text("SELECT embedding FROM face_crops LIMIT 1"))
+        row = sample.fetchone()
+        if row and row[0]:
+            dim = len(row[0].split(","))
+            if dim != 512:
+                import logging as _log
+                _log.getLogger(__name__).info(
+                    "Clearing legacy %d-dim face embeddings (expected 512 from insightface)", dim
+                )
+                await conn.execute(text("DELETE FROM face_crops"))
+                await conn.execute(text("DELETE FROM persons"))
+    except Exception:
+        pass  # Tables may not exist yet on fresh install
+
 
 async def init_db() -> None:
     """Create all tables on startup (idempotent), then apply column migrations."""

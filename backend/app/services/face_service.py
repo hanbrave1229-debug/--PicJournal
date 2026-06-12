@@ -20,6 +20,7 @@ from sqlalchemy import delete, select
 
 from app.config import get_settings
 from app.core.face_engine import (
+    EMBEDDING_DIM,
     FACE_RECOGNITION_AVAILABLE,
     SKLEARN_AVAILABLE,
     ClusteredFace,
@@ -59,8 +60,8 @@ async def run_face_analysis(force: bool = False) -> FaceRunResponse:
 
     if not FACE_RECOGNITION_AVAILABLE:
         raise RuntimeError(
-            "face_recognition 库未安装（dlib 依赖缺失）。"
-            "请确认 Docker 镜像使用了包含 cmake 的最新 Dockerfile 重新构建。"
+            "insightface 或 onnxruntime 未正确安装。"
+            "请拉取最新 Docker 镜像（docker compose pull && docker compose up -d）。"
         )
     if not SKLEARN_AVAILABLE:
         raise RuntimeError("scikit-learn 未安装，无法执行人脸聚类。")
@@ -154,7 +155,8 @@ async def _pipeline(force: bool) -> FaceRunResponse:
             embedding=[float(v) for v in c.embedding.split(",")],
         )
         for c in existing_crops
-        if c.embedding
+        # Only include embeddings with matching dimension (skip legacy 128-dim from face_recognition)
+        if c.embedding and len(c.embedding.split(",")) == EMBEDDING_DIM
     ]
 
     combined_faces = existing_faces + all_faces
