@@ -481,8 +481,8 @@ const addingToDiary = ref(false)
 function openAddToDiary(photo: Photo) {
   addDiaryTarget.value = photo
   // Use photo's taken_at date as default (format YYYY-MM-DD)
-  if (photo.taken_at) {
-    diaryTargetDate.value = photo.taken_at.slice(0, 10)
+  if (photo.exif?.taken_at) {
+    diaryTargetDate.value = photo.exif.taken_at.slice(0, 10)
   } else {
     const today = new Date()
     diaryTargetDate.value = today.toISOString().slice(0, 10)

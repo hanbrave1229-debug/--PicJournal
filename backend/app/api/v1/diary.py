@@ -57,6 +57,7 @@ async def save_diary(
         content=body.content,
         mood=body.mood,
         photo_ids=body.photo_ids,
+        cover_photo_id=body.cover_photo_id,
     )
     return diary_service._to_response(diary)
 

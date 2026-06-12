@@ -7,8 +7,9 @@ export interface DiaryResponse {
   content: string | null
   ai_draft: string | null
   mood: MoodType
-  photo_ids: number[]
+  photo_ids: number[]         // cover photo is first
   photo_count: number
+  cover_photo_id: number | null
   cover_thumbnail_url: string | null
   created_at: string
   updated_at: string
@@ -33,6 +34,7 @@ export interface DiaryUpsertRequest {
   content: string | null
   mood: MoodType
   photo_ids: number[]
+  cover_photo_id?: number | null
 }
 
 export interface DiaryGenerateDraftRequest {

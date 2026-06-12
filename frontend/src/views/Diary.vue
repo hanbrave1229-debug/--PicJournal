@@ -612,6 +612,7 @@ async function saveDiary(): Promise<void> {
       content: diaryContent.value || null,
       mood: selectedMood.value,
       photo_ids: selectedPhotoIds.value,
+      cover_photo_id: selectedPhotoIds.value[0] ?? null,
     })
     ElMessage.success('日记及照片关联已保存')
     dialogVisible.value = false

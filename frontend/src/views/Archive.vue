@@ -34,7 +34,7 @@
         <!-- Thumbnail -->
         <div class="arc-card-img-wrap">
           <img
-            :src="`/api/v1/thumbnails/${photo.id}/256`"
+            :src="`/api/v1/thumbnails/${photo.id}?size=256`"
             :alt="photo.file_name"
             class="arc-card-img"
             loading="lazy"

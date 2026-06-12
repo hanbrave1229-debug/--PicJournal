@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func,
+    BigInteger,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +28,11 @@ class Diary(Base):
 
     mood: Mapped[str] = mapped_column(String(16), nullable=False, default="calm")
     """One of: happy, calm, tired, sad, energetic."""
+
+    cover_photo_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("photos.id", ondelete="SET NULL"), nullable=True
+    )
+    """Explicitly chosen cover photo — first in the user's selection order."""
 
     # Multi-user isolation placeholder
     owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)

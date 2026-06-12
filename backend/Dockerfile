@@ -1,21 +1,26 @@
 FROM python:3.12-slim
 
-# 系统依赖：OpenCV headless + curl(healthcheck)
+# 系统依赖：OpenCV headless + curl(healthcheck) + cmake/build-essential for dlib
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     curl \
+    cmake \
+    build-essential \
+    libopenblas-dev \
+    liblapack-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 安装 Python 依赖
-# face-recognition 需从源码编译 dlib（耗时 ~20min），NAS 上跳过
-# 人脸识别功能已做优雅降级，缺失时自动禁用，不影响其他功能
+# 预编译 dlib（独立 layer，由 GHA cache 缓存，后续代码改动不重新编译）
+# face-recognition-models 提供人脸模型文件（纯 Python wheel，无需编译）
+RUN pip install --no-cache-dir "dlib==19.24.6" "face-recognition-models==0.3.0"
+
+# 安装其余 Python 依赖（含 face-recognition，此时 dlib 已装好，跳过重复编译）
 COPY requirements.txt .
-RUN grep -v "^face-recognition" requirements.txt > requirements-docker.txt \
-    && pip install --no-cache-dir -r requirements-docker.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制应用代码
 COPY app/ ./app/

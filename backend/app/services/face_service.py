@@ -20,6 +20,8 @@ from sqlalchemy import delete, select
 
 from app.config import get_settings
 from app.core.face_engine import (
+    FACE_RECOGNITION_AVAILABLE,
+    SKLEARN_AVAILABLE,
     ClusteredFace,
     DetectedFace,
     cluster_faces,
@@ -54,6 +56,14 @@ async def run_face_analysis(force: bool = False) -> FaceRunResponse:
         force: If True, re-detect faces for photos that already have FaceCrops.
     """
     global _is_running, _last_result
+
+    if not FACE_RECOGNITION_AVAILABLE:
+        raise RuntimeError(
+            "face_recognition 库未安装（dlib 依赖缺失）。"
+            "请确认 Docker 镜像使用了包含 cmake 的最新 Dockerfile 重新构建。"
+        )
+    if not SKLEARN_AVAILABLE:
+        raise RuntimeError("scikit-learn 未安装，无法执行人脸聚类。")
 
     if _is_running:
         raise RuntimeError("Face analysis already running")

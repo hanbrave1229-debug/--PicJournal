@@ -25,8 +25,8 @@
         <!-- Cover -->
         <div class="al-card-cover">
           <img
-            v-if="album.cover_photo_id"
-            :src="`/api/v1/thumbnails/${album.cover_photo_id}/256`"
+            v-if="album.cover_thumbnail_url || album.cover_photo_id"
+            :src="album.cover_thumbnail_url ?? `/api/v1/thumbnails/${album.cover_photo_id}?size=256`"
             class="al-cover-img"
             loading="lazy"
           />

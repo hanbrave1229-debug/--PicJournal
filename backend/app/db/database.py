@@ -12,7 +12,7 @@ SQLite tuning (PRD §5.2.1):
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -65,10 +65,22 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
+async def _run_migrations(conn) -> None:
+    """Apply lightweight schema migrations for columns added after initial deploy."""
+    # diaries.cover_photo_id — added to store explicit cover selection
+    existing = await conn.execute(text("PRAGMA table_info(diaries)"))
+    cols = {row[1] for row in existing.fetchall()}
+    if "cover_photo_id" not in cols:
+        await conn.execute(
+            text("ALTER TABLE diaries ADD COLUMN cover_photo_id INTEGER REFERENCES photos(id)")
+        )
+
+
 async def init_db() -> None:
-    """Create all tables on startup (idempotent)."""
+    """Create all tables on startup (idempotent), then apply column migrations."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _run_migrations(conn)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

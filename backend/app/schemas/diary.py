@@ -19,6 +19,8 @@ class DiaryUpsertRequest(BaseModel):
     content: str | None = None
     mood: MoodType = "calm"
     photo_ids: list[int] = Field(default_factory=list)
+    cover_photo_id: int | None = None
+    """Explicit cover photo — should be photo_ids[0] when set."""
 
 
 class DiaryGenerateDraftRequest(BaseModel):
@@ -47,6 +49,7 @@ class DiaryResponse(BaseModel):
     mood: MoodType
     photo_ids: list[int]
     photo_count: int
+    cover_photo_id: int | None = None
     cover_thumbnail_url: str | None
     created_at: datetime
     updated_at: datetime

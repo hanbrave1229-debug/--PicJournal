@@ -8,7 +8,7 @@
           <div class="app-logo-icon">
             <el-icon size="18"><Camera /></el-icon>
           </div>
-          <span class="app-logo-name">Photo Manager</span>
+          <span class="app-logo-name">拾光手账</span>
         </div>
 
         <!-- Nav -->

@@ -32,12 +32,17 @@ def _thumbnail_url(photo: Photo) -> str | None:
 
 
 def _to_response(diary: Diary) -> DiaryResponse:
-    photo_ids = [dp.photo_id for dp in diary.diary_photos]
-    cover_url: str | None = None
-    if diary.diary_photos:
-        first = diary.diary_photos[0].photo
-        if first:
-            cover_url = _thumbnail_url(first)
+    all_ids = [dp.photo_id for dp in diary.diary_photos]
+    # Use explicitly stored cover_photo_id; fall back to first associated photo
+    cover_pid: int | None = diary.cover_photo_id or (all_ids[0] if all_ids else None)
+    cover_url: str | None = (
+        f"/api/v1/thumbnails/{cover_pid}?size=256" if cover_pid else None
+    )
+    # Return cover photo first so frontend can restore strip display order
+    if cover_pid and cover_pid in all_ids:
+        photo_ids = [cover_pid] + [pid for pid in all_ids if pid != cover_pid]
+    else:
+        photo_ids = all_ids
     return DiaryResponse(
         id=diary.id,
         diary_date=diary.diary_date,
@@ -46,6 +51,7 @@ def _to_response(diary: Diary) -> DiaryResponse:
         mood=diary.mood,  # type: ignore[arg-type]
         photo_ids=photo_ids,
         photo_count=len(photo_ids),
+        cover_photo_id=cover_pid,
         cover_thumbnail_url=cover_url,
         created_at=diary.created_at,
         updated_at=diary.updated_at,
@@ -78,20 +84,27 @@ async def upsert_diary(
     content: Optional[str],
     mood: MoodType,
     photo_ids: list[int],
+    cover_photo_id: Optional[int] = None,
 ) -> Diary:
     """
     Atomically create or update the diary for a given date.
     Replaces the full set of photo associations.
+    cover_photo_id is stored explicitly; defaults to photo_ids[0] if not given.
     """
+    effective_cover = cover_photo_id or (photo_ids[0] if photo_ids else None)
     diary = await get_diary_by_date(db, diary_date)
 
     if diary is None:
-        diary = Diary(diary_date=diary_date, mood=mood, content=content)
+        diary = Diary(
+            diary_date=diary_date, mood=mood, content=content,
+            cover_photo_id=effective_cover,
+        )
         db.add(diary)
         await db.flush()  # get diary.id
     else:
         diary.content = content
         diary.mood = mood
+        diary.cover_photo_id = effective_cover
         # Clear existing associations
         await db.execute(
             delete(DiaryPhoto).where(DiaryPhoto.diary_id == diary.id)
