@@ -134,7 +134,7 @@ async def list_album_photos(
         raise HTTPException(status_code=404, detail="Album not found")
     photos, total = await album_service.list_album_photos(db, album_id, page, page_size)
     return {
-        "items": [PhotoResponse.model_validate(p) for p in photos],
+        "items": [PhotoResponse.from_orm(p) for p in photos],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -170,11 +170,17 @@ async def remove_photos(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _to_response(album) -> AlbumResponse:
+    cover_url = (
+        f"/api/v1/thumbnails/{album.cover_photo_id}?size=256"
+        if album.cover_photo_id
+        else None
+    )
     return AlbumResponse(
         id=album.id,
         title=album.title,
         description=album.description,
         cover_photo_id=album.cover_photo_id,
+        cover_thumbnail_url=cover_url,
         is_smart=album.is_smart,
         smart_rules=album.smart_rules,
         photo_count=len(album.album_photos) if hasattr(album, "album_photos") else 0,

@@ -397,13 +397,20 @@ const rulerKeys = computed<string[]>(() => {
 
 const activeRulerKey = ref<string>('')
 
+/** Get the actual scroll container (.app-main), not window */
+function getScrollContainer(): HTMLElement | null {
+  return document.querySelector('.app-main')
+}
+
 function scrollToDate(key: string) {
   // Try month-level element first, fall back to year
   const year = key.split('-')[0]
   const el = document.getElementById(`tl-${key}`) ?? document.getElementById(`tl-${year}`)
-  if (el) {
-    const y = el.getBoundingClientRect().top + window.scrollY - 80
-    window.scrollTo({ top: y, behavior: 'smooth' })
+  const container = getScrollContainer()
+  if (el && container) {
+    // getBoundingClientRect is relative to viewport; container.scrollTop is absolute in container
+    const y = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 80
+    container.scrollTo({ top: y, behavior: 'smooth' })
     activeRulerKey.value = key
   }
 }
@@ -569,13 +576,15 @@ onMounted(async () => {
   )
   if (sentinel.value) observer.observe(sentinel.value)
 
-  window.addEventListener('scroll', onContentScroll, { passive: true })
+  const scrollEl = getScrollContainer()
+  if (scrollEl) scrollEl.addEventListener('scroll', onContentScroll, { passive: true })
 })
 
 onUnmounted(() => {
   observer?.disconnect()
   if (toastTimer) clearTimeout(toastTimer)
-  window.removeEventListener('scroll', onContentScroll)
+  const scrollEl = getScrollContainer()
+  if (scrollEl) scrollEl.removeEventListener('scroll', onContentScroll)
 })
 
 // Re-fetch when filter changes

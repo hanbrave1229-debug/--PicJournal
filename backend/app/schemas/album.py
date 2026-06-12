@@ -12,12 +12,13 @@ from pydantic import BaseModel, Field
 class SmartAlbumRules(BaseModel):
     """Rule set for a smart (conditional) album."""
     camera_model: Optional[str] = None
-    quality_score_gt: Optional[float] = Field(None, ge=0, le=200)
+    quality_score_gt: Optional[float] = Field(None, ge=0, le=1000)
     date_after: Optional[str] = None   # "YYYY-MM-DD"
     date_before: Optional[str] = None  # "YYYY-MM-DD"
     country: Optional[str] = None
     province: Optional[str] = None
     city: Optional[str] = None
+    tags_contain: Optional[str] = None  # AI tag substring match
 
 
 class AlbumCreateRequest(BaseModel):
@@ -39,6 +40,7 @@ class AlbumResponse(BaseModel):
     title: str
     description: Optional[str]
     cover_photo_id: Optional[int]
+    cover_thumbnail_url: Optional[str] = None
     is_smart: bool
     smart_rules: Optional[str] = None
     photo_count: int

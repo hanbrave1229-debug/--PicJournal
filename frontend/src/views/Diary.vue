@@ -91,42 +91,18 @@
         <div class="dialog-photo-panel">
           <div class="panel-label">
             <span>今日快照 (已选 {{ selectedPhotoIds.length }})</span>
-            <div class="panel-label-actions">
-              <span class="panel-link" @click="openCrossMonthPicker">跨月挑选</span>
-              <span class="panel-link" @click="togglePicker">
-                {{ pickerOpen ? '收起' : '本月照片' }}
-              </span>
-            </div>
+            <span class="panel-link" @click="openCrossMonthPicker">选择照片</span>
           </div>
 
-          <!-- Inline photo picker grid -->
-          <Transition name="picker-slide">
-            <div v-if="pickerOpen" v-loading="loadingPicker" class="picker-grid">
-              <div
-                v-for="photo in pickerPhotos"
-                :key="photo.id"
-                class="picker-thumb"
-                :class="{ 'is-selected': selectedPhotoIds.includes(photo.id) }"
-                @click="togglePickerPhoto(photo.id)"
-              >
-                <img :src="`/api/v1/thumbnails/${photo.id}?size=256`" alt="" loading="lazy" />
-                <div v-if="selectedPhotoIds.includes(photo.id)" class="picker-check">
-                  <el-icon size="9" color="#fff"><Check /></el-icon>
-                </div>
-              </div>
-              <div v-if="!loadingPicker && pickerPhotos.length === 0" class="picker-empty">
-                暂无照片
-              </div>
-            </div>
-          </Transition>
-
-          <!-- Photo strip (selected thumbnails) -->
+          <!-- Photo strip (selected thumbnails). Click = set as cover, X = remove -->
           <div class="photo-strip">
             <div
               v-for="pid in selectedPhotoIds"
               :key="pid"
               class="photo-thumb selected"
-              @click="previewStripPhoto(pid)"
+              :class="{ 'is-cover': pid === selectedPhotoIds[0] }"
+              :title="pid === selectedPhotoIds[0] ? '当前封面' : '点击设为封面'"
+              @click="setCoverPhoto(pid)"
             >
               <img :src="`/api/v1/thumbnails/${pid}?size=256`" alt="" />
               <!-- X to remove -->
@@ -354,10 +330,7 @@ const diaryContent   = ref('')
 const isGenerating   = ref(false)
 const isSaving       = ref(false)
 
-// Photo picker
-const pickerOpen     = ref(false)
-const pickerPhotos   = ref<Photo[]>([])
-const loadingPicker  = ref(false)
+// (inline picker removed — unified into cross-month modal)
 
 // All photos we've loaded (from picker + existing diary) — used for geo lookup
 const allPhotosMap = ref<Map<number, Photo>>(new Map())
@@ -491,8 +464,7 @@ function goToday(): void {
 // ── Dialog open / close ───────────────────────────────────────────────────────
 
 async function openDialog(day: number, existing: DiaryCalendarItem | null): Promise<void> {
-  selectedDay.value    = day
-  pickerOpen.value     = false
+  selectedDay.value = day
 
   if (existing) {
     selectedMood.value = existing.mood
@@ -531,32 +503,28 @@ async function loadPhotosIntoMap(ids: number[]): Promise<void> {
   } catch { /* ignore */ }
 }
 
-/** Open a strip photo in a simple full-screen preview overlay. */
-function previewStripPhoto(pid: number): void {
-  stripPreviewUrl.value = `/api/v1/thumbnails/${pid}?size=1080`
+/**
+ * Set a strip photo as the cover (move to position 0).
+ * If already cover, show a brief preview instead.
+ */
+function setCoverPhoto(pid: number): void {
+  const idx = selectedPhotoIds.value.indexOf(pid)
+  if (idx === 0) {
+    // Already cover — show preview
+    stripPreviewUrl.value = `/api/v1/thumbnails/${pid}?size=1080`
+    return
+  }
+  if (idx > 0) {
+    // Move to front
+    selectedPhotoIds.value.splice(idx, 1)
+    selectedPhotoIds.value.unshift(pid)
+  }
 }
 
 function deselectPhoto(photoId: number): void {
   selectedPhotoIds.value = selectedPhotoIds.value.filter(id => id !== photoId)
 }
 
-/** Toggle the inline photo picker and lazy-load photos on first open. */
-async function togglePicker(): Promise<void> {
-  pickerOpen.value = !pickerOpen.value
-  if (pickerOpen.value && pickerPhotos.value.length === 0) {
-    loadingPicker.value = true
-    try {
-      const { data } = await photoApi.list({ page_size: 80, sort_by: 'taken_at', order: 'desc' })
-      pickerPhotos.value = data.items
-      // Merge into allPhotosMap for geo lookup
-      for (const p of data.items) allPhotosMap.value.set(p.id, p)
-    } catch {
-      ElMessage.error('加载照片列表失败')
-    } finally {
-      loadingPicker.value = false
-    }
-  }
-}
 
 // ── Cross-month picker ────────────────────────────────────────────────────────
 
@@ -600,20 +568,12 @@ function toggleCrossMonthPhoto(id: number): void {
 }
 
 function openCrossMonthPicker(): void {
-  const now2 = new Date()
-  crossMonthDate.value = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, '0')}`
+  // Default to the currently viewed diary month
+  crossMonthDate.value = `${currentYear.value}-${String(currentMonth.value).padStart(2, '0')}`
   crossMonthPhotos.value = []
   crossMonthVisible.value = true
-}
-
-/** Toggle a photo in/out of the selection. */
-function togglePickerPhoto(id: number): void {
-  const idx = selectedPhotoIds.value.indexOf(id)
-  if (idx === -1) {
-    selectedPhotoIds.value.push(id)
-  } else {
-    selectedPhotoIds.value.splice(idx, 1)
-  }
+  // Auto-load photos for the default month
+  loadCrossMonthPhotos()
 }
 
 // ── AI draft ──────────────────────────────────────────────────────────────────
@@ -921,94 +881,13 @@ onMounted(() => { loadMonth() })
   &:hover { text-decoration: underline; }
 }
 
-// ── Inline picker ─────────────────────────────────────────────────────────────
-.picker-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  max-height: 180px;
-  overflow-y: auto;
-  margin-bottom: 10px;
-  padding: 4px;
-  border: 1px solid var(--no-border-low);
-  border-radius: 8px;
-  background: var(--no-bg-main);
-
-  &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-thumb { background: var(--no-border-mid); border-radius: 2px; }
-}
-
-.picker-thumb {
-  position: relative;
-  aspect-ratio: 1;
-  border-radius: 5px;
-  overflow: hidden;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: border-color 0.15s, opacity 0.15s;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  &:hover { opacity: 0.8; }
-
-  &.is-selected {
-    border-color: var(--no-accent);
-  }
-}
-
-.picker-check {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--no-accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.picker-empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 20px;
-  color: var(--no-text-disabled);
-  font-size: 13px;
-}
-
-// Picker slide transition
-.picker-slide-enter-active,
-.picker-slide-leave-active {
-  transition: max-height 0.25s ease, opacity 0.2s ease;
-  overflow: hidden;
-}
-.picker-slide-enter-from,
-.picker-slide-leave-to {
-  max-height: 0;
-  opacity: 0;
-}
-.picker-slide-enter-to,
-.picker-slide-leave-from {
-  max-height: 200px;
-  opacity: 1;
-}
-
 // ── Photo strip ───────────────────────────────────────────────────────────────
 .photo-strip {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
-  overflow-x: auto;
+  flex-wrap: wrap;   // 换行而非横向滚动
   padding-bottom: 4px;
-
-  &::-webkit-scrollbar { height: 4px; }
-  &::-webkit-scrollbar-thumb { background: var(--no-border-mid); border-radius: 2px; }
 }
 
 .photo-thumb {
@@ -1016,7 +895,6 @@ onMounted(() => { loadMonth() })
   width: 60px;
   height: 60px;
   border-radius: 8px;
-  overflow: hidden;
   flex-shrink: 0;
   cursor: pointer;
   border: 2px solid var(--no-accent);
@@ -1025,6 +903,13 @@ onMounted(() => { loadMonth() })
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 6px;  // 保持圆角（不用 overflow:hidden）
+  }
+
+  // Cover photo highlight
+  &.is-cover {
+    border-color: #fde047;
+    box-shadow: 0 0 0 2px rgba(253, 224, 71, 0.3);
   }
 }
 

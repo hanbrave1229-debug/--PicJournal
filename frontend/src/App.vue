@@ -41,8 +41,7 @@
 
           <el-menu-item index="/archive">
             <el-icon><Box /></el-icon>
-            <span class="menu-item-text">归档箱</span>
-            <span class="menu-iso-badge">隔离</span>
+            <span>归档箱</span>
           </el-menu-item>
 
           <el-menu-item index="/smart-albums">

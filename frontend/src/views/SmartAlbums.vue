@@ -59,6 +59,10 @@
                 {{ [parsedRules(album)?.province, parsedRules(album)?.city].filter(Boolean).join('·') }}
               </span>
             </div>
+            <div v-if="parsedRules(album)?.tags_contain" class="sa-rule-row">
+              <span class="sa-rule-key">AI标签</span>
+              <span class="sa-rule-val sa-rule-accent">含「{{ parsedRules(album)?.tags_contain }}」</span>
+            </div>
             <div v-if="!hasAnyRule(album)" class="sa-rule-none">无过滤条件（匹配所有照片）</div>
           </template>
           <div v-else class="sa-rule-none">无规则</div>
@@ -166,6 +170,14 @@
             <el-input v-model="newAlbum.rules.city" placeholder="如：杭州市" clearable />
           </el-form-item>
         </div>
+
+        <el-form-item label="AI 标签关键词 (tags_contain)">
+          <el-input
+            v-model="newAlbum.rules.tags_contain"
+            placeholder="如：花、人像、海边（AI 打标后生效）"
+            clearable
+          />
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -210,6 +222,7 @@ interface NewAlbumForm {
     date_before: string
     province: string
     city: string
+    tags_contain: string
   }
 }
 
@@ -222,6 +235,7 @@ const defaultForm = (): NewAlbumForm => ({
     date_before: '',
     province: '',
     city: '',
+    tags_contain: '',
   },
 })
 
@@ -253,7 +267,7 @@ function parsedRules(album: Album): SmartAlbumRules | null {
 function hasAnyRule(album: Album): boolean {
   const r = parsedRules(album)
   if (!r) return false
-  return !!(r.camera_model || r.quality_score_gt || r.date_after || r.date_before || r.province || r.city)
+  return !!(r.camera_model || r.quality_score_gt || r.date_after || r.date_before || r.province || r.city || r.tags_contain)
 }
 
 // ── Rule builder ────────────────────────────────────────────────────────────
@@ -275,6 +289,7 @@ async function saveSmartAlbum(): Promise<void> {
     if (r.date_before)            rules.date_before = r.date_before
     if (r.province.trim())        rules.province = r.province.trim()
     if (r.city.trim())            rules.city = r.city.trim()
+    if (r.tags_contain?.trim())  rules.tags_contain = r.tags_contain.trim()
 
     const { data: album } = await albumsApi.createSmart({
       title: newAlbum.value.title.trim(),

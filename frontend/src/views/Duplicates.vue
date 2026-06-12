@@ -199,6 +199,13 @@
                     <span class="dup-meta-val">{{ timeFmt(photo) }}</span>
                   </div>
                 </div>
+                <!-- Per-card delete button -->
+                <button
+                  class="dup-card-del-btn"
+                  @click.stop="deleteSinglePhoto(group, photo)"
+                >
+                  🗑 删除此张
+                </button>
               </div>
             </div>
           </div>
@@ -224,6 +231,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useDuplicateStore } from '@/stores/useDuplicateStore'
 import PkCompareModal from '@/components/duplicate/PkCompareModal.vue'
 import { formatBytes } from '@/utils/format'
@@ -303,6 +311,27 @@ async function batchExec() {
     count++
   }
   showToast(`已批量清理 ${count} 组冗余照片！`)
+}
+
+// ── Per-card delete ───────────────────────────────────────────────────
+async function deleteSinglePhoto(group: DuplicateGroup, photo: Photo) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除「${photo.file_name}」？此操作将移入回收站，无法撤销。`,
+      '删除照片',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  const keepIds = group.photos.filter(p => p.id !== photo.id).map(p => p.id)
+  await dupStore.resolve({
+    group_id: group.id,
+    keep_ids: keepIds,
+    delete_ids: [photo.id],
+  })
+  selectedIds.value.delete(group.id)
+  showToast(`「${photo.file_name}」已移入回收站`)
 }
 
 // ── PK Modal ──────────────────────────────────────────────────────────
@@ -904,6 +933,22 @@ function timeFmt(p: Photo): string {
 
   &--good { color: var(--no-accent); }
   &--bad  { color: #f87171; }
+}
+
+/* ── Per-card delete button ─────────────────────────────────────── */
+.dup-card-del-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  background: rgba(248, 113, 113, 0.06);
+  color: #f87171;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+
+  &:hover { background: rgba(248, 113, 113, 0.15); border-color: rgba(248, 113, 113, 0.4); }
 }
 
 /* ── Load hint ───────────────────────────────────────────────────── */

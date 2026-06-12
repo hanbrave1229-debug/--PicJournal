@@ -48,7 +48,7 @@
         <!-- Thumbnail -->
         <div class="tr-thumb-wrap">
           <img
-            :src="`/api/v1/thumbnails/${photo.id}/256`"
+            :src="`/api/v1/thumbnails/${photo.id}?size=256`"
             class="tr-thumb"
             loading="lazy"
           />

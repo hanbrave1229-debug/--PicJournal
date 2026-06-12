@@ -149,7 +149,7 @@ async def list_album_photos(
         select(Photo)
         .join(AlbumPhoto, AlbumPhoto.photo_id == Photo.id)
         .where(AlbumPhoto.album_id == album_id, Photo.is_deleted == False)  # noqa: E712
-        .order_by(Photo.taken_at.desc().nulls_last(), Photo.created_at.desc())
+        .order_by(Photo.taken_at.desc().nullslast(), Photo.created_at.desc())
     )
     total_result = await db.execute(
         select(func.count()).select_from(base.subquery())
@@ -317,6 +317,10 @@ async def resolve_smart_album_photos(
         stmt = stmt.where(Photo.province == rules["province"])
     if rules.get("city"):
         stmt = stmt.where(Photo.city == rules["city"])
+
+    if rules.get("tags_contain"):
+        tag = rules["tags_contain"]
+        stmt = stmt.where(Photo.ai_tags.ilike(f"%{tag}%"))
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total: int = (await db.execute(count_stmt)).scalar_one()
