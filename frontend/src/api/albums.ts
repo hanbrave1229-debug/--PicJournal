@@ -7,6 +7,7 @@ import type {
   AlbumUpdateRequest,
   TrashListResponse,
 } from '@/types/album'
+import type { PhotoListResponse } from '@/types/photo'
 
 const BASE = '/api/v1/albums'
 const TRASH = '/api/v1/trash'
@@ -54,6 +55,25 @@ export const albumsApi = {
   /** Remove specific photos from an album */
   removePhotos(id: number, photoIds: number[]): Promise<{ data: { removed: number } }> {
     return axios.delete(`${BASE}/${id}/photos`, { data: { photo_ids: photoIds } })
+  },
+
+  // ── Smart albums ────────────────────────────────────────────────────────────
+
+  /** List all smart (conditional) albums */
+  listSmart(): Promise<{ data: AlbumListResponse }> {
+    return axios.get(`${BASE}/smart`)
+  },
+
+  /** Create a smart album with rule JSON */
+  createSmart(body: AlbumCreateRequest): Promise<{ data: Album }> {
+    return axios.post(BASE, { ...body, is_smart: true })
+  },
+
+  /** Dynamically evaluate a smart album and return matching photos */
+  evaluate(id: number, page = 1, pageSize = 60): Promise<{ data: PhotoListResponse }> {
+    return axios.post(`${BASE}/${id}/evaluate`, null, {
+      params: { page, page_size: pageSize },
+    })
   },
 }
 

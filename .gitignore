@@ -30,3 +30,6 @@ Thumbs.db
 
 # PDF
 相册功能模块规划.pdf
+data/db/
+data/geo/
+data/db/.fuse_hidden*

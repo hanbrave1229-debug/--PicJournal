@@ -8,6 +8,8 @@ export interface DashboardStats {
   blurry_count: number
   underexposed_count: number
   overexposed_count: number
+  ai_tagged_count: number
+  total_persons: number
   last_scan_at: string | null
   last_scan_path: string | null
 }

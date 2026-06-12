@@ -35,6 +35,20 @@ export interface Photo {
   duplicate_group_id: number | null
   exif: ExifInfo
   scores: PhotoScores
+  /** AI-generated scene description (null until tagged) */
+  ai_caption: string | null
+  /** AI-generated keyword tags (empty until tagged) */
+  ai_tags: string[]
+  /** ThumbHash Base64 placeholder for progressive loading */
+  thumbhash: string | null
+  /** Offline reverse geocoding — country */
+  country: string | null
+  /** Offline reverse geocoding — province */
+  province: string | null
+  /** Offline reverse geocoding — city */
+  city: string | null
+  /** Archived photos are hidden from the main timeline */
+  is_archived: boolean
   created_at: string
   updated_at: string
 }

@@ -59,6 +59,20 @@ class Photo(Base):
     ai_tags: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     """JSON array of keywords, e.g. '[\"beach\",\"sunset\"]'."""
 
+    # ── ThumbHash placeholder ─────────────────────────────────────────────────
+    thumbhash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    """Base64-encoded ThumbHash (~20 bytes) for progressive image loading."""
+
+    # ── Offline reverse geocoding ──────────────────────────────────────────────
+    country: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    province: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # ── Archive (dual-track isolation) ────────────────────────────────────────
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    """Archived photos are hidden from the main timeline but NOT deleted physically."""
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     # ── Soft delete ───────────────────────────────────────────────────────────
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

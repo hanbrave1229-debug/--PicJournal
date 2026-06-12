@@ -91,10 +91,33 @@
         <div class="dialog-photo-panel">
           <div class="panel-label">
             <span>今日快照 (已选 {{ selectedPhotoIds.length }})</span>
-            <span class="panel-link" @click="showPhotoPickerHint">去图库挑选</span>
+            <span class="panel-link" @click="togglePicker">
+              {{ pickerOpen ? '收起' : '选择照片' }}
+            </span>
           </div>
 
-          <!-- Photo strip -->
+          <!-- Inline photo picker grid -->
+          <Transition name="picker-slide">
+            <div v-if="pickerOpen" v-loading="loadingPicker" class="picker-grid">
+              <div
+                v-for="photo in pickerPhotos"
+                :key="photo.id"
+                class="picker-thumb"
+                :class="{ 'is-selected': selectedPhotoIds.includes(photo.id) }"
+                @click="togglePickerPhoto(photo.id)"
+              >
+                <img :src="`/api/v1/thumbnails/${photo.id}/256`" alt="" loading="lazy" />
+                <div v-if="selectedPhotoIds.includes(photo.id)" class="picker-check">
+                  <el-icon size="9" color="#fff"><Check /></el-icon>
+                </div>
+              </div>
+              <div v-if="!loadingPicker && pickerPhotos.length === 0" class="picker-empty">
+                暂无照片
+              </div>
+            </div>
+          </Transition>
+
+          <!-- Photo strip (selected thumbnails) -->
           <div class="photo-strip">
             <div
               v-for="pid in selectedPhotoIds"
@@ -122,6 +145,12 @@
             <div v-if="selectedPhotoIds.length === 0" class="cover-empty">
               <el-icon size="28" color="var(--no-text-disabled)"><Picture /></el-icon>
               <span>暂无封面照片</span>
+            </div>
+            <!-- Offline geo tag overlay -->
+            <div v-if="coverPhotoGeo" class="cover-geo-tag">
+              <span class="cover-geo-pin">📍</span>
+              <span class="cover-geo-text">{{ coverPhotoGeo }}</span>
+              <span class="cover-geo-badge">离线地理</span>
             </div>
           </div>
         </div>
@@ -233,7 +262,9 @@ import {
   ArrowLeft, ArrowRight, Check, EditPen, MagicStick, Picture,
 } from '@element-plus/icons-vue'
 import { diaryApi } from '@/api/diary'
+import { photoApi } from '@/api/photos'
 import type { CalendarCell, DiaryCalendarItem, MoodConfig, MoodType } from '@/types/diary'
+import type { Photo } from '@/types/photo'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -267,7 +298,25 @@ const diaryContent   = ref('')
 const isGenerating   = ref(false)
 const isSaving       = ref(false)
 
+// Photo picker
+const pickerOpen     = ref(false)
+const pickerPhotos   = ref<Photo[]>([])
+const loadingPicker  = ref(false)
+
 // ── Computed ──────────────────────────────────────────────────────────────────
+
+/**
+ * Geo text for the cover photo (first selected photo).
+ * Returns "省·市" if available, null otherwise.
+ */
+const coverPhotoGeo = computed<string | null>(() => {
+  if (selectedPhotoIds.value.length === 0) return null
+  const coverId = selectedPhotoIds.value[0]
+  const photo = pickerPhotos.value.find(p => p.id === coverId)
+  if (!photo) return null
+  const parts = [photo.province, photo.city].filter(Boolean)
+  return parts.length > 0 ? parts.join('·') : null
+})
 
 /**
  * Build the 35-cell (5×7) calendar grid for the current month.
@@ -372,17 +421,24 @@ function goToday(): void {
 
 // ── Dialog open / close ───────────────────────────────────────────────────────
 
-function openDialog(day: number, existing: DiaryCalendarItem | null): void {
-  selectedDay.value = day
+async function openDialog(day: number, existing: DiaryCalendarItem | null): Promise<void> {
+  selectedDay.value    = day
+  pickerOpen.value     = false
 
   if (existing) {
-    selectedMood.value      = existing.mood
-    diaryContent.value      = existing.summary ?? ''
-    selectedPhotoIds.value  = [] // full photo_ids fetched on first AI call if needed
+    selectedMood.value = existing.mood
+    diaryContent.value = existing.summary ?? ''
+    // Fetch full diary entry to load associated photo_ids
+    try {
+      const { data } = await diaryApi.getByDate(isoDate(day))
+      selectedPhotoIds.value = data.photo_ids
+    } catch {
+      selectedPhotoIds.value = []
+    }
   } else {
-    selectedMood.value      = 'calm'
-    diaryContent.value      = ''
-    selectedPhotoIds.value  = []
+    selectedMood.value     = 'calm'
+    diaryContent.value     = ''
+    selectedPhotoIds.value = []
   }
   dialogVisible.value = true
 }
@@ -391,8 +447,30 @@ function deselectPhoto(photoId: number): void {
   selectedPhotoIds.value = selectedPhotoIds.value.filter(id => id !== photoId)
 }
 
-function showPhotoPickerHint(): void {
-  ElMessage.info('请前往「照片库」，多选照片后点击「加入日记」按钮')
+/** Toggle the inline photo picker and lazy-load photos on first open. */
+async function togglePicker(): Promise<void> {
+  pickerOpen.value = !pickerOpen.value
+  if (pickerOpen.value && pickerPhotos.value.length === 0) {
+    loadingPicker.value = true
+    try {
+      const { data } = await photoApi.list({ page_size: 80, sort_by: 'taken_at', order: 'desc' })
+      pickerPhotos.value = data.items
+    } catch {
+      ElMessage.error('加载照片列表失败')
+    } finally {
+      loadingPicker.value = false
+    }
+  }
+}
+
+/** Toggle a photo in/out of the selection. */
+function togglePickerPhoto(id: number): void {
+  const idx = selectedPhotoIds.value.indexOf(id)
+  if (idx === -1) {
+    selectedPhotoIds.value.push(id)
+  } else {
+    selectedPhotoIds.value.splice(idx, 1)
+  }
 }
 
 // ── AI draft ──────────────────────────────────────────────────────────────────
@@ -527,6 +605,8 @@ onMounted(() => { loadMonth() })
   aspect-ratio: 1 / 1;
   border-radius: 12px;
   background-color: var(--no-bg-card);
+  // 轻微暗色手账纸张底纹，让空格子不那么平板
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
   border: 1px solid var(--no-border-low);
   overflow: hidden;
   cursor: pointer;
@@ -619,24 +699,31 @@ onMounted(() => { loadMonth() })
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
 }
 
-// Hover slide-up panel
+// Hover slide-up panel (Safari 兼容：圆角裁剪防黑边溢出)
 .cell-hover-panel {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   padding: 10px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 100%);
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.82) 100%);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transform: translateY(100%);
-  transition: transform 280ms cubic-bezier(0.25, 0.8, 0.25, 1);
+  // 强制在父容器圆角内剪裁，修复 Safari 黑边
+  border-radius: 0 0 12px 12px;
+  transform: translateY(101%); // 101% 避免 1px 残影
+  transition: transform 280ms cubic-bezier(0.25, 0.8, 0.25, 1),
+              opacity 200ms ease;
+  opacity: 0;
   z-index: 3;
 }
 
 .calendar-cell:hover .cell-hover-panel {
   transform: translateY(0);
+  opacity: 1;
 }
+
+// (hover rule moved inside .cell-hover-panel block above)
 
 .cell-summary {
   display: -webkit-box;
@@ -691,6 +778,85 @@ onMounted(() => { loadMonth() })
   &:hover { text-decoration: underline; }
 }
 
+// ── Inline picker ─────────────────────────────────────────────────────────────
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding: 4px;
+  border: 1px solid var(--no-border-low);
+  border-radius: 8px;
+  background: var(--no-bg-main);
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: var(--no-border-mid); border-radius: 2px; }
+}
+
+.picker-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 5px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, opacity 0.15s;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  &:hover { opacity: 0.8; }
+
+  &.is-selected {
+    border-color: var(--no-accent);
+  }
+}
+
+.picker-check {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--no-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.picker-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px;
+  color: var(--no-text-disabled);
+  font-size: 13px;
+}
+
+// Picker slide transition
+.picker-slide-enter-active,
+.picker-slide-leave-active {
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  overflow: hidden;
+}
+.picker-slide-enter-from,
+.picker-slide-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+.picker-slide-enter-to,
+.picker-slide-leave-from {
+  max-height: 200px;
+  opacity: 1;
+}
+
+// ── Photo strip ───────────────────────────────────────────────────────────────
 .photo-strip {
   display: flex;
   gap: 8px;
@@ -751,6 +917,7 @@ onMounted(() => { loadMonth() })
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  position: relative;  // needed for geo overlay
 }
 
 .cover-empty {
@@ -760,6 +927,45 @@ onMounted(() => { loadMonth() })
   gap: 8px;
   color: var(--no-text-disabled);
   font-size: 13px;
+}
+
+// ── Geo tag overlay ────────────────────────────────────────────────────────
+.cover-geo-tag {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 7px;
+  background: rgba(21, 23, 26, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 6px;
+  border: 1px solid rgba(52, 211, 153, 0.2);
+  pointer-events: none;
+}
+
+.cover-geo-pin {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.cover-geo-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: #e5e7eb;
+  letter-spacing: 0.02em;
+}
+
+.cover-geo-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--no-accent);
+  font-family: var(--no-font-mono);
+  letter-spacing: 0.04em;
 }
 
 // ── Right: write panel ────────────────────────────────────────────────────────
@@ -894,7 +1100,7 @@ onMounted(() => { loadMonth() })
   align-items: center;
 }
 
-// AI aurora button
+// AI aurora button — shimmer breathing effect
 .ai-btn {
   display: flex;
   align-items: center;
@@ -902,19 +1108,28 @@ onMounted(() => { loadMonth() })
   padding: 7px 16px;
   border-radius: 8px;
   border: none;
-  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 50%, #ec4899 100%);
+  background-size: 200% 200%;
   color: #fff;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: filter 0.2s, box-shadow 0.2s;
+  animation: ai-shimmer 4s ease infinite;
+  transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
 
   &:hover:not(:disabled) {
-    filter: brightness(1.1);
-    box-shadow: 0 0 14px rgba(236, 72, 153, 0.4);
+    transform: translateY(-1px);
+    filter: brightness(1.15);
+    box-shadow: 0 0 20px rgba(236, 72, 153, 0.5);
   }
 
-  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; animation: none; }
+}
+
+@keyframes ai-shimmer {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 .save-btn {
@@ -931,12 +1146,14 @@ onMounted(() => { loadMonth() })
 
 .polaroid-card {
   width: 340px;
-  background-color: #fdfdfb;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
-  border-radius: 2px;
-  padding: 18px 18px 44px;
-  color: #333;
+  background-color: #fefefc;
+  // 更精细的纸张噪点（opacity 降低，更真实）
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65);
+  border-radius: 3px;
+  padding: 20px 20px 52px;
+  // 手写墨水感：蓝黑色调
+  color: #1e2230;
   position: relative;
 }
 
@@ -973,7 +1190,8 @@ onMounted(() => { loadMonth() })
 .polaroid-content {
   font-size: 15px;
   line-height: 1.8;
-  color: #333;
+  // 与 polaroid-card color 同步：墨蓝色手写感
+  color: #1e2230;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -985,17 +1203,20 @@ onMounted(() => { loadMonth() })
 
 .polaroid-stamp {
   position: absolute;
-  bottom: 10px;
-  right: 12px;
+  bottom: 12px;
+  right: 14px;
   font-size: 20px;
-  border: 2px solid #f87171;
+  border: 2px dashed #f87171;
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.6;
+  // 背景微红，复古印章感
+  background: rgba(248, 113, 113, 0.06);
+  color: #f87171;
+  opacity: 0.65;
   transform: rotate(-12deg);
 }
 

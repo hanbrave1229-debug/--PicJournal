@@ -39,12 +39,74 @@
       </div>
 
       <div class="gl-toolbar-right">
+        <!-- NL Search bar -->
+        <div class="gl-nl-bar">
+          <input
+            v-model="nlQuery"
+            class="gl-nl-input"
+            placeholder="✨ AI 搜索：如「春天的花」「2023年旅行」…"
+            @keydown.enter="runNLSearch"
+            @keydown.escape="clearNLSearch"
+          />
+          <button
+            class="gl-nl-btn"
+            :class="{ 'is-loading': nlSearching }"
+            :disabled="nlSearching"
+            @click="runNLSearch"
+          >
+            {{ nlSearching ? '…' : '搜索' }}
+          </button>
+          <button
+            v-if="nlResults !== null"
+            class="gl-nl-clear"
+            title="退出搜索"
+            @click="clearNLSearch"
+          >✕</button>
+        </div>
         <el-text type="info" size="small" class="gl-total-text">共 {{ photoStore.total }} 张</el-text>
       </div>
     </div>
 
-    <!-- ── Timeline content ────────────────────────────────────── -->
-    <div class="gl-content" ref="contentRef">
+    <!-- ── NL Search results ──────────────────────────────────────── -->
+    <Transition name="gl-search-fade">
+      <div v-if="nlResults !== null" class="gl-search-results">
+        <div class="gl-search-header">
+          <span class="gl-search-label">
+            🔍 「{{ nlQuery }}」— 找到 {{ nlResults.length }} 张
+          </span>
+          <button class="gl-search-close" @click="clearNLSearch">退出搜索</button>
+        </div>
+        <div
+          v-if="nlResults.length > 0"
+          class="gl-photo-grid gl-search-grid"
+          :style="{ gridTemplateColumns: `repeat(${columns}, 1fr)` }"
+        >
+          <div
+            v-for="photo in nlResults"
+            :key="photo.id"
+            class="gl-photo-cell"
+            @click="openViewer(photo)"
+          >
+            <img
+              :src="`/api/v1/thumbnails/${photo.id}?size=256`"
+              :alt="photo.file_name"
+              loading="lazy"
+              class="gl-thumb"
+              @error="onImgErr"
+            />
+            <div class="gl-overlay">
+              <span class="gl-overlay-fname">{{ photo.file_name }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-else class="gl-search-empty">
+          <el-empty description="没有匹配的照片，换个描述试试" />
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ── Timeline content (hidden while in search mode) ───────── -->
+    <div v-show="nlResults === null" class="gl-content" ref="contentRef">
       <div v-if="photoStore.loading && photoStore.photos.length === 0" class="gl-loading">
         <span class="gl-spinner" />
         <span>加载中…</span>
@@ -91,12 +153,10 @@
                   class="gl-photo-cell"
                   @click="openViewer(photo)"
                 >
-                  <img
+                  <ProgressiveImage
                     :src="`/api/v1/thumbnails/${photo.id}?size=256`"
                     :alt="photo.file_name"
-                    loading="lazy"
-                    class="gl-thumb"
-                    @error="onImgErr"
+                    :thumbhash="photo.thumbhash"
                   />
                   <!-- Hover overlay -->
                   <div class="gl-overlay">
@@ -104,6 +164,31 @@
                     <div class="gl-overlay-badges">
                       <span class="gl-badge-score">{{ scoreLabel(photo) }}</span>
                       <span v-if="isRaw(photo)" class="gl-badge-raw">RAW</span>
+                    </div>
+                    <!-- AI tags (first 3) -->
+                    <div v-if="photo.ai_tags?.length" class="gl-overlay-tags">
+                      <span
+                        v-for="tag in photo.ai_tags.slice(0, 3)"
+                        :key="tag"
+                        class="gl-overlay-tag"
+                      >#{{ tag }}</span>
+                    </div>
+                    <!-- AI caption -->
+                    <p v-if="photo.ai_caption" class="gl-overlay-caption">
+                      {{ photo.ai_caption.length > 32 ? photo.ai_caption.slice(0, 32) + '…' : photo.ai_caption }}
+                    </p>
+                    <!-- Archive / Trash quick actions -->
+                    <div class="gl-overlay-actions">
+                      <button
+                        class="gl-action-btn gl-action-archive"
+                        title="归档（从主轴隐藏）"
+                        @click.stop="handleArchive(photo)"
+                      >归档</button>
+                      <button
+                        class="gl-action-btn gl-action-trash"
+                        title="移入回收站"
+                        @click.stop="handleTrashFromGallery(photo)"
+                      >🗑</button>
                     </div>
                   </div>
                   <!-- Add to album button -->
@@ -233,7 +318,10 @@ import { ElMessage } from 'element-plus'
 import { usePhotoStore } from '@/stores/usePhotoStore'
 import { useAlbumStore } from '@/stores/useAlbumStore'
 import { diaryApi } from '@/api/diary'
+import { searchApi } from '@/api/search'
+import { archiveApi } from '@/api/archive'
 import ImageViewer from '@/components/gallery/ImageViewer.vue'
+import ProgressiveImage from '@/components/gallery/ProgressiveImage.vue'
 import type { Photo } from '@/types/photo'
 import type { PhotoListParams } from '@/types/photo'
 
@@ -433,6 +521,23 @@ async function onSoftDelete(photoId: number) {
   }
 }
 
+// ── Archive action (from photo cell hover) ────────────────────────────
+async function handleArchive(photo: Photo): Promise<void> {
+  try {
+    await archiveApi.archive(photo.id)
+    // Remove from local store immediately
+    photoStore.photos.splice(photoStore.photos.findIndex(p => p.id === photo.id), 1)
+    showToast('已归档，主时间轴已隐藏')
+  } catch {
+    ElMessage.error('归档失败，请重试')
+  }
+}
+
+async function handleTrashFromGallery(photo: Photo): Promise<void> {
+  await photoStore.softDelete(photo.id)
+  showToast('已移入回收站')
+}
+
 // ── Infinite scroll ───────────────────────────────────────────────────
 const sentinel = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
@@ -470,6 +575,38 @@ function scoreLabel(p: Photo): string {
 function onImgErr(e: Event) {
   const img = e.target as HTMLImageElement
   img.style.opacity = '0.2'
+}
+
+// ── NL Search ─────────────────────────────────────────────────────────
+const nlQuery = ref('')
+const nlSearching = ref(false)
+const nlResults = ref<Photo[] | null>(null)  // null = not in search mode
+const nlResultClause = ref('')               // for debug / tooltip
+
+/** Run NL search; switch the view to search-result mode. */
+async function runNLSearch(): Promise<void> {
+  const q = nlQuery.value.trim()
+  if (!q) { clearNLSearch(); return }
+
+  nlSearching.value = true
+  try {
+    const { data } = await searchApi.nlSearch({ query: q, limit: 60 })
+    nlResults.value = data.items
+    nlResultClause.value = data.where_clause
+    if (data.total === 0) ElMessage.info('没有找到匹配的照片')
+  } catch (err: any) {
+    const msg = err?.response?.data?.detail ?? 'AI 搜索失败，请检查 AI 配置'
+    ElMessage.error(msg)
+  } finally {
+    nlSearching.value = false
+  }
+}
+
+/** Clear search results and return to normal timeline. */
+function clearNLSearch(): void {
+  nlQuery.value = ''
+  nlResults.value = null
+  nlResultClause.value = ''
 }
 </script>
 
@@ -685,6 +822,35 @@ function onImgErr(e: Event) {
 
 .gl-overlay-badges { display: flex; gap: 3px; }
 
+/* AI tags */
+.gl-overlay-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 5px;
+}
+
+.gl-overlay-tag {
+  font-size: 8px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(52, 211, 153, 0.25);
+  color: #6ee7b7;
+  white-space: nowrap;
+}
+
+/* AI caption */
+.gl-overlay-caption {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 4px 0 0;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .gl-badge-score {
   font-size: 8px;
   font-weight: 700;
@@ -692,6 +858,48 @@ function onImgErr(e: Event) {
   background: var(--no-accent);
   color: var(--no-bg-main);
   border-radius: 3px;
+}
+
+// ── Archive / Trash hover action buttons ──────────────────────────────
+.gl-overlay-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.gl-action-btn {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 150ms ease;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.gl-action-archive {
+  background: rgba(96, 165, 250, 0.18);
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.3);
+
+  &:hover {
+    background: rgba(96, 165, 250, 0.35);
+  }
+}
+
+.gl-action-trash {
+  background: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.3);
+
+  &:hover {
+    background: rgba(248, 113, 113, 0.35);
+  }
 }
 
 .gl-badge-raw {
@@ -849,6 +1057,124 @@ function onImgErr(e: Event) {
   .gl-photo-cell:hover & { opacity: 1; }
   &:hover { transform: scale(1.15); }
 }
+
+/* ── NL Search bar ───────────────────────────────────────────────── */
+.gl-nl-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gl-nl-input {
+  width: 260px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--no-border-mid);
+  background: var(--no-bg-card);
+  color: var(--no-text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+
+  &::placeholder { color: var(--no-text-disabled); }
+
+  &:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+  }
+}
+
+.gl-nl-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: none;
+  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  background-size: 200% 200%;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.2s;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) { filter: brightness(1.12); }
+  &:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  &.is-loading { animation: ai-shimmer 1.5s ease infinite; }
+}
+
+@keyframes ai-shimmer {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.gl-nl-clear {
+  height: 28px;
+  width: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--no-border-mid);
+  background: transparent;
+  color: var(--no-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover { background: var(--no-bg-hover); color: var(--no-text-primary); }
+}
+
+/* ── NL Search results panel ─────────────────────────────────────── */
+.gl-search-results {
+  margin-bottom: 16px;
+}
+
+.gl-search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(236, 72, 153, 0.08) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.gl-search-label {
+  font-size: 13px;
+  color: var(--no-text-primary);
+}
+
+.gl-search-close {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--no-border-mid);
+  background: transparent;
+  color: var(--no-text-muted);
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover { background: var(--no-bg-hover); }
+}
+
+.gl-search-grid {
+  margin-bottom: 0;
+}
+
+.gl-search-empty {
+  padding: 40px 0;
+}
+
+/* Transition */
+.gl-search-fade-enter-active,
+.gl-search-fade-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.gl-search-fade-enter-from,
+.gl-search-fade-leave-to { opacity: 0; transform: translateY(-8px); }
 
 /* ── Diary date picker dialog ────────────────────────────────────── */
 .gl-diary-picker {

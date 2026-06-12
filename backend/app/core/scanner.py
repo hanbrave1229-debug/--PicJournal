@@ -67,6 +67,7 @@ class FileInfo(NamedTuple):
     iso: int | None
     gps_lat: float | None
     gps_lon: float | None
+    thumbhash: str | None  # Dominant color as "#RRGGBB" for progressive placeholder
 
 
 def _process_file(file_path: str) -> FileInfo | None:
@@ -83,9 +84,17 @@ def _process_file(file_path: str) -> FileInfo | None:
         path = Path(file_path)
         stat = path.stat()
 
-        # Header-only open — does NOT load pixel data into memory
+        # Load image to get dimensions + dominant color for ThumbHash placeholder
         with Image.open(path) as img:
             width, height = img.size
+            # Compute dominant color: resize to 1×1 → #RRGGBB
+            # Fast because Pillow uses box-average downsampling at this scale.
+            try:
+                tiny = img.convert("RGB").resize((1, 1), Image.LANCZOS)
+                r, g, b = tiny.getpixel((0, 0))
+                thumbhash: str | None = f"#{r:02x}{g:02x}{b:02x}"
+            except Exception:
+                thumbhash = None
 
         exif: ExifData = extract_exif(path)
 
@@ -104,6 +113,7 @@ def _process_file(file_path: str) -> FileInfo | None:
             iso=exif.iso,
             gps_lat=exif.gps_lat,
             gps_lon=exif.gps_lon,
+            thumbhash=thumbhash,
         )
     except Exception:
         return None
@@ -176,6 +186,9 @@ async def _upsert_photos(
             photo.iso = info.iso
             photo.gps_lat = info.gps_lat
             photo.gps_lon = info.gps_lon
+            # Only write thumbhash when not yet computed (preserve any future upgrades)
+            if photo.thumbhash is None and info.thumbhash is not None:
+                photo.thumbhash = info.thumbhash
 
             session.add(photo)
 

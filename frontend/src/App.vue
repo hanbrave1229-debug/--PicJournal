@@ -39,6 +39,17 @@
             <span class="menu-new-badge">New</span>
           </el-menu-item>
 
+          <el-menu-item index="/archive">
+            <el-icon><Box /></el-icon>
+            <span class="menu-item-text">归档箱</span>
+            <span class="menu-iso-badge">隔离</span>
+          </el-menu-item>
+
+          <el-menu-item index="/smart-albums">
+            <el-icon><MagicStick /></el-icon>
+            <span>智能相册</span>
+          </el-menu-item>
+
           <!-- Divider -->
           <div class="app-menu-divider" />
 
@@ -170,6 +181,16 @@ const currentRoute = computed(() => route.path)
   border-radius: 50%;
   background: #f87171;
   opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.menu-iso-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(96, 165, 250, 0.14);
+  color: #60a5fa;
+  font-weight: 500;
   flex-shrink: 0;
 }
 

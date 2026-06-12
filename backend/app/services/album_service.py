@@ -21,8 +21,15 @@ async def create_album(
     db: AsyncSession,
     title: str,
     description: Optional[str] = None,
+    is_smart: bool = False,
+    smart_rules: Optional[str] = None,
 ) -> Album:
-    album = Album(title=title, description=description)
+    album = Album(
+        title=title,
+        description=description,
+        is_smart=is_smart,
+        smart_rules=smart_rules,
+    )
     db.add(album)
     await db.commit()
     await db.refresh(album)
@@ -35,6 +42,16 @@ async def list_albums(db: AsyncSession) -> list[Album]:
         select(Album)
         .where(Album.is_smart == False)  # noqa: E712
         .options(selectinload(Album.album_photos))
+        .order_by(Album.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_smart_albums(db: AsyncSession) -> list[Album]:
+    """Return all smart (conditional) albums."""
+    result = await db.execute(
+        select(Album)
+        .where(Album.is_smart == True)  # noqa: E712
         .order_by(Album.created_at.desc())
     )
     return list(result.scalars().all())
@@ -217,6 +234,74 @@ async def list_trash(
     total = total_result.scalar_one()
 
     result = await db.execute(base.offset((page - 1) * page_size).limit(page_size))
+    return list(result.scalars().all()), total
+
+
+async def resolve_smart_album_photos(
+    rules_json: str,
+    db: AsyncSession,
+    page: int = 1,
+    page_size: int = 200,
+) -> tuple[list[Photo], int]:
+    """
+    Dynamically evaluate smart album rules and return matching photos.
+
+    Supported rule keys:
+      - camera_model (str): EXIF camera model substring match
+      - quality_score_gt (float): minimum (sharpness + exposure*100) / 2
+      - date_after (str "YYYY-MM-DD"): taken_at >= date
+      - date_before (str "YYYY-MM-DD"): taken_at <= date
+      - country / province / city (str): exact match on geo fields
+    """
+    import json as _json
+    from datetime import datetime as _dt
+
+    try:
+        rules: dict = _json.loads(rules_json) if rules_json else {}
+    except Exception:
+        rules = {}
+
+    stmt = select(Photo).where(
+        Photo.is_deleted.is_(False),
+        Photo.is_archived.is_(False),
+    )
+
+    if rules.get("camera_model"):
+        stmt = stmt.where(Photo.camera_model.ilike(f"%{rules['camera_model']}%"))
+
+    if rules.get("quality_score_gt") is not None:
+        threshold = float(rules["quality_score_gt"])
+        stmt = stmt.where(Photo.sharpness_score >= threshold)
+
+    if rules.get("date_after"):
+        try:
+            dt_after = _dt.strptime(rules["date_after"], "%Y-%m-%d")
+            stmt = stmt.where(Photo.taken_at >= dt_after)
+        except ValueError:
+            pass
+
+    if rules.get("date_before"):
+        try:
+            dt_before = _dt.strptime(rules["date_before"], "%Y-%m-%d")
+            stmt = stmt.where(Photo.taken_at <= dt_before)
+        except ValueError:
+            pass
+
+    if rules.get("country"):
+        stmt = stmt.where(Photo.country == rules["country"])
+    if rules.get("province"):
+        stmt = stmt.where(Photo.province == rules["province"])
+    if rules.get("city"):
+        stmt = stmt.where(Photo.city == rules["city"])
+
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total: int = (await db.execute(count_stmt)).scalar_one()
+
+    result = await db.execute(
+        stmt.order_by(Photo.taken_at.desc().nullslast())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     return list(result.scalars().all()), total
 
 

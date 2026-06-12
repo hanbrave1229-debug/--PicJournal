@@ -44,6 +44,16 @@ const router = createRouter({
       component: () => import('@/views/Diary.vue'),
     },
     {
+      path: '/archive',
+      name: 'archive',
+      component: () => import('@/views/Archive.vue'),
+    },
+    {
+      path: '/smart-albums',
+      name: 'smart-albums',
+      component: () => import('@/views/SmartAlbums.vue'),
+    },
+    {
       path: '/trash',
       name: 'trash',
       component: () => import('@/views/Trash.vue'),

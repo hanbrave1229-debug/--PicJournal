@@ -1,5 +1,16 @@
 import type { Photo } from './photo'
 
+/** Rule object for smart albums */
+export interface SmartAlbumRules {
+  camera_model?: string | null
+  quality_score_gt?: number | null
+  date_after?: string | null
+  date_before?: string | null
+  country?: string | null
+  province?: string | null
+  city?: string | null
+}
+
 /** A user-created (or smart) album */
 export interface Album {
   id: number
@@ -7,6 +18,7 @@ export interface Album {
   description: string | null
   cover_photo_id: number | null
   is_smart: boolean
+  smart_rules: string | null
   photo_count: number
   created_at: string
   updated_at: string
@@ -20,6 +32,8 @@ export interface AlbumListResponse {
 export interface AlbumCreateRequest {
   title: string
   description?: string
+  is_smart?: boolean
+  smart_rules?: SmartAlbumRules | null
 }
 
 export interface AlbumUpdateRequest {

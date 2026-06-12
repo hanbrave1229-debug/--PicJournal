@@ -270,6 +270,27 @@
             </div>
           </div>
 
+          <!-- AI caption & tags -->
+          <div class="iv-sb-section">
+            <div class="iv-sb-label">AI 智能理解</div>
+            <div class="iv-sb-card">
+              <template v-if="photo.ai_caption || photo.ai_tags?.length">
+                <p v-if="photo.ai_caption" class="iv-sb-caption">{{ photo.ai_caption }}</p>
+                <div v-if="photo.ai_tags?.length" class="iv-sb-tags">
+                  <span
+                    v-for="tag in photo.ai_tags"
+                    :key="tag"
+                    class="iv-sb-tag"
+                  >#{{ tag }}</span>
+                </div>
+              </template>
+              <div v-else class="iv-sb-empty iv-sb-empty--ai">
+                <span>尚未打标</span>
+                <small>前往「设置」开启 AI 打标后，此处将显示场景描述与关键词</small>
+              </div>
+            </div>
+          </div>
+
           <!-- AI scores -->
           <div class="iv-sb-section">
             <div class="iv-sb-label">AI 评估数据</div>
@@ -916,6 +937,42 @@ onUnmounted(() => {
 .iv-sb-warn { color: #fbbf24; font-weight: 600; }
 .iv-sb-score { color: var(--no-accent); font-size: 20px; font-weight: 700; }
 .iv-sb-empty { color: var(--no-text-muted); font-size: 11px; text-align: center; padding: 6px 0; }
+
+/* AI caption & tags */
+.iv-sb-caption {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--no-text-primary);
+  margin: 0 0 10px;
+  font-style: italic;
+}
+
+.iv-sb-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.iv-sb-tag {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--no-accent);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+  white-space: nowrap;
+}
+
+.iv-sb-empty--ai {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+  padding: 10px 0;
+
+  span { font-size: 12px; color: var(--no-text-muted); }
+  small { font-size: 11px; color: var(--no-text-disabled); text-align: center; line-height: 1.4; }
+}
 
 /* ── Custom scrollbar ─────────────────────────────────────────────── */
 .custom-scroll {

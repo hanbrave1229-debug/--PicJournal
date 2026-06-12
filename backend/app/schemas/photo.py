@@ -1,6 +1,9 @@
 """
 Pydantic schemas for Photo responses.
 """
+from __future__ import annotations
+
+import json
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -38,6 +41,17 @@ class PhotoResponse(BaseModel):
     duplicate_group_id: int | None
     exif: ExifInfo
     scores: PhotoScores
+    # AI-generated fields (None until AI tagging has run)
+    ai_caption: str | None = None
+    ai_tags: list[str] = Field(default_factory=list)
+    # ThumbHash progressive placeholder
+    thumbhash: str | None = None
+    # Offline reverse geocoding
+    country: str | None = None
+    province: str | None = None
+    city: str | None = None
+    # Archive dual-track
+    is_archived: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -76,6 +90,13 @@ class PhotoResponse(BaseModel):
                 sharpness_score=p.sharpness_score,
                 exposure_score=p.exposure_score,
             ),
+            ai_caption=p.ai_caption,
+            ai_tags=json.loads(p.ai_tags) if p.ai_tags else [],
+            thumbhash=p.thumbhash,
+            country=p.country,
+            province=p.province,
+            city=p.city,
+            is_archived=p.is_archived,
             created_at=p.created_at,
             updated_at=p.updated_at,
         )

@@ -62,8 +62,10 @@
             <el-icon><UserFilled /></el-icon>
           </div>
         </div>
-        <div class="db-stat-value font-mono">—</div>
-        <div class="db-stat-hint db-stat-hint--accent">DBSCAN 聚类已完成</div>
+        <div class="db-stat-value font-mono">
+          {{ stats ? stats.total_persons.toLocaleString() : '—' }}
+        </div>
+        <div class="db-stat-hint db-stat-hint--accent">DBSCAN 本地聚类</div>
       </el-card>
 
       <!-- Cleanup warning -->
@@ -81,6 +83,20 @@
           发现 {{ stats?.duplicate_count ?? '—' }} 组相似照片
         </div>
       </el-card>
+    </div>
+
+    <!-- ── AI 打标进度条 ────────────────────────────────────────────── -->
+    <div v-if="stats" class="db-ai-bar-wrap">
+      <div class="db-ai-bar-head">
+        <span class="db-ai-bar-label">
+          🤖 AI 智能打标进度
+          <span class="db-ai-bar-num">{{ stats.ai_tagged_count }} / {{ stats.total_photos }}</span>
+        </span>
+        <span class="db-ai-bar-pct">{{ aiTaggedPct }}%</span>
+      </div>
+      <div class="db-ai-bar-track">
+        <div class="db-ai-bar-fill" :style="{ width: aiTaggedPct + '%' }" />
+      </div>
     </div>
 
     <!-- ── Lower two-column section ────────────────────────────────── -->
@@ -220,6 +236,11 @@ const scanProgress = computed<number>(() => {
   const t = scanStore.activeTask
   if (!t || !t.total_files || t.total_files === 0) return 0
   return Math.round(((t.processed_files ?? 0) / t.total_files) * 100)
+})
+
+const aiTaggedPct = computed<number>(() => {
+  if (!stats.value || stats.value.total_photos === 0) return 0
+  return Math.round((stats.value.ai_tagged_count / stats.value.total_photos) * 100)
 })
 
 onMounted(async () => {
@@ -452,6 +473,57 @@ function onImgErr(e: Event) {
   display: flex; align-items: center; gap: 6px;
   padding: 4px 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── AI tagging progress bar ─────────────────────────────────────────── */
+.db-ai-bar-wrap {
+  margin-bottom: 28px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: var(--no-bg-card);
+  border: 1px solid var(--no-border-low);
+}
+
+.db-ai-bar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.db-ai-bar-label {
+  font-size: 13px;
+  color: var(--no-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.db-ai-bar-num {
+  font-family: var(--no-font-mono);
+  font-size: 12px;
+  color: var(--no-text-muted);
+}
+
+.db-ai-bar-pct {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--no-font-mono);
+  color: var(--no-accent);
+}
+
+.db-ai-bar-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--no-bg-hover);
+  overflow: hidden;
+}
+
+.db-ai-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #8b5cf6 0%, var(--no-accent) 100%);
+  transition: width 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 /* ── Utilities ───────────────────────────────────────────────────────── */

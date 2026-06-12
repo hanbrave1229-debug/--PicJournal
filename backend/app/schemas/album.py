@@ -9,15 +9,29 @@ from pydantic import BaseModel, Field
 
 # ── Album schemas ─────────────────────────────────────────────────────────────
 
+class SmartAlbumRules(BaseModel):
+    """Rule set for a smart (conditional) album."""
+    camera_model: Optional[str] = None
+    quality_score_gt: Optional[float] = Field(None, ge=0, le=200)
+    date_after: Optional[str] = None   # "YYYY-MM-DD"
+    date_before: Optional[str] = None  # "YYYY-MM-DD"
+    country: Optional[str] = None
+    province: Optional[str] = None
+    city: Optional[str] = None
+
+
 class AlbumCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=64)
     description: Optional[str] = None
+    is_smart: bool = False
+    smart_rules: Optional[SmartAlbumRules] = None
 
 
 class AlbumUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=64)
     description: Optional[str] = None
     cover_photo_id: Optional[int] = None
+    smart_rules: Optional[SmartAlbumRules] = None
 
 
 class AlbumResponse(BaseModel):
@@ -26,6 +40,7 @@ class AlbumResponse(BaseModel):
     description: Optional[str]
     cover_photo_id: Optional[int]
     is_smart: bool
+    smart_rules: Optional[str] = None
     photo_count: int
     created_at: datetime
     updated_at: datetime

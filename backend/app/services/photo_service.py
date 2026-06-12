@@ -41,7 +41,7 @@ async def list_photos(
     col = getattr(Photo, sort_by, Photo.taken_at)
     order_expr = col.desc() if order == "desc" else col.asc()
 
-    stmt = select(Photo).where(Photo.is_deleted.is_(False))
+    stmt = select(Photo).where(Photo.is_deleted.is_(False), Photo.is_archived.is_(False))
 
     if only_duplicates:
         stmt = stmt.where(Photo.duplicate_group_id.is_not(None))
@@ -119,6 +119,22 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
     )
     q_row = quality_agg.one()
 
+    # AI-tagged count
+    tagged_agg = await db.execute(
+        select(func.count(Photo.id)).where(
+            Photo.is_deleted.is_(False),
+            Photo.ai_caption.is_not(None),
+        )
+    )
+    ai_tagged_count: int = tagged_agg.scalar_one()
+
+    # Person count (from face clustering)
+    from app.models.person import Person
+    persons_agg = await db.execute(
+        select(func.count(Person.id)).where(Person.is_hidden.is_(False))
+    )
+    total_persons: int = persons_agg.scalar_one()
+
     # Last completed scan
     last_scan = await db.execute(
         select(ScanTask)
@@ -136,6 +152,8 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         "blurry_count": q_row.blurry,
         "underexposed_count": q_row.underexposed,
         "overexposed_count": q_row.overexposed,
+        "ai_tagged_count": ai_tagged_count,
+        "total_persons": total_persons,
         "last_scan_at": last_scan_row.finished_at.isoformat() if last_scan_row else None,
         "last_scan_path": last_scan_row.scan_path if last_scan_row else None,
     }

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import scan, photos, duplicates, thumbnails, scoring, dashboard, persons, albums, trash, config, diary
+from app.api.v1 import scan, photos, duplicates, thumbnails, scoring, dashboard, persons, albums, trash, config, diary, search, archive, geocoding
 
 router = APIRouter()
 
@@ -15,3 +15,6 @@ router.include_router(albums.router,     prefix="/albums",     tags=["albums"])
 router.include_router(trash.router,      prefix="/trash",      tags=["trash"])
 router.include_router(config.router,     prefix="/config",     tags=["config"])
 router.include_router(diary.router,      prefix="/diaries",    tags=["diaries"])
+router.include_router(search.router,     prefix="/search",     tags=["search"])
+router.include_router(archive.router,    prefix="/archive",    tags=["archive"])
+router.include_router(geocoding.router,  prefix="/geocoding",  tags=["geocoding"])
