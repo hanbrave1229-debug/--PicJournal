@@ -123,6 +123,18 @@ export const usePersonStore = defineStore('person', () => {
     }
   }
 
+  // Reset all face data then refresh
+  async function resetFaceData(): Promise<{ crops_deleted: number; persons_deleted: number }> {
+    const { data } = await personsApi.reset()
+    persons.value = []
+    totalPersons.value = 0
+    currentPage.value = 1
+    activePerson.value = null
+    activePhotos.value = []
+    activePhotosTotal.value = 0
+    return data
+  }
+
   function _patchLocal(updated: Person) {
     const idx = persons.value.findIndex((p) => p.id === updated.id)
     if (idx !== -1) persons.value[idx] = updated
@@ -150,5 +162,6 @@ export const usePersonStore = defineStore('person', () => {
     lockPerson,
     deletePerson,
     mergePersons,
+    resetFaceData,
   }
 })

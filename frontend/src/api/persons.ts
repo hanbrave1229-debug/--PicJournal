@@ -60,6 +60,11 @@ export const personsApi = {
     return axios.post(`${BASE}/rebuild-covers`)
   },
 
+  /** Hard reset: delete ALL face recognition data (FaceCrop + Person rows). Photos are kept. */
+  reset(): Promise<{ data: { crops_deleted: number; persons_deleted: number } }> {
+    return axios.post(`${BASE}/reset`)
+  },
+
   /** Build URL for a face crop image by filesystem path */
   cropUrl(coverPath: string | null): string {
     if (!coverPath) return ''

@@ -13,6 +13,15 @@
           <el-icon><Refresh /></el-icon>
         </el-button>
         <el-button
+          size="small"
+          title="清空所有人脸识别数据（照片不受影响），重置后可重新识别"
+          :disabled="personStore.running"
+          @click="resetAnalysis"
+        >
+          <el-icon><Delete /></el-icon>
+          重置
+        </el-button>
+        <el-button
           v-if="!personStore.running"
           type="primary" size="small"
           @click="runAnalysis"
@@ -465,6 +474,22 @@ async function runAnalysis() {
     showBanner(result.message)
   } catch {
     ElMessage.error('识别失败，请重试')
+  }
+}
+
+async function resetAnalysis() {
+  try {
+    await ElMessageBox.confirm(
+      '将删除所有人物和人脸数据，照片本身不受影响。重置后可重新运行识别。',
+      '重置人脸识别数据',
+      { confirmButtonText: '确认重置', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return }
+  try {
+    const result = await personStore.resetFaceData()
+    showBanner(`已重置：删除 ${result.persons_deleted} 位人物、${result.crops_deleted} 条人脸记录`)
+  } catch {
+    ElMessage.error('重置失败，请重试')
   }
 }
 

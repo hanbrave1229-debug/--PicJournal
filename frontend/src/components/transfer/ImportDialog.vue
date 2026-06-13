@@ -144,9 +144,7 @@ async function doImportZip() {
       return
     }
 
-    // Regular mode: create new album
-    if (!zipAlbumName.value.trim()) { ElMessage.warning('请填写相册名称'); return }
-
+    // Regular mode: create new album (zipAlbumName is auto-filled from filename by handleZipChange)
     const result = await importAlbumFromZip(
       zipFile.value,
       zipAlbumName.value.trim(),
