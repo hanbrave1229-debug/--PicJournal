@@ -3,9 +3,10 @@ Pydantic schemas for Person / FaceCrop API responses.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 
 class PersonResponse(BaseModel):
@@ -19,6 +20,15 @@ class PersonResponse(BaseModel):
     photo_count: int   # injected by service layer, not from ORM directly
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def cover_url(self) -> str | None:
+        """Derive a servable URL from the local cover_path."""
+        if not self.cover_path:
+            return None
+        filename = os.path.basename(self.cover_path)
+        return f"/api/v1/persons/crops/{filename}"
 
 
 class PersonRenameRequest(BaseModel):

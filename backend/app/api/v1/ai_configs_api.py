@@ -8,6 +8,9 @@ Rules:
 """
 from __future__ import annotations
 
+import time
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,6 +127,54 @@ async def activate_config(config_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(cfg)
     return _to_response(cfg)
+
+
+# ── Test connectivity ─────────────────────────────────────────────────────────
+
+@router.post("/{config_id}/test")
+async def test_config(config_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Send a minimal text-only chat request to verify the endpoint is reachable
+    and the API key is accepted. Returns latency_ms on success.
+    """
+    cfg = await db.get(AiModelConfig, config_id)
+    if not cfg:
+        raise HTTPException(404, "Config not found")
+
+    from app.services.crypto import decrypt
+    api_key  = decrypt(cfg.api_key_enc) if cfg.api_key_enc else ""
+    base_url = (cfg.base_url or "https://api.openai.com/v1").rstrip("/")
+    model    = cfg.model
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{base_url}/chat/completions", json=payload, headers=headers)
+        latency_ms = int((time.monotonic() - t0) * 1000)
+
+        if resp.status_code in (200, 201):
+            return {"ok": True, "latency_ms": latency_ms, "status_code": resp.status_code}
+
+        # Parse error message from response body if possible
+        try:
+            err = resp.json().get("error", {}).get("message", resp.text[:200])
+        except Exception:
+            err = resp.text[:200]
+        return {"ok": False, "latency_ms": latency_ms, "status_code": resp.status_code, "error": err}
+
+    except httpx.ConnectError as e:
+        return {"ok": False, "latency_ms": None, "error": f"无法连接: {base_url}"}
+    except httpx.TimeoutException:
+        return {"ok": False, "latency_ms": None, "error": "连接超时（10s）"}
+    except Exception as e:
+        return {"ok": False, "latency_ms": None, "error": str(e)}
 
 
 # ── Get active (for internal health checks / UI badge) ────────────────────────

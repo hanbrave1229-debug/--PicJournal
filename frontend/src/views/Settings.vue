@@ -128,6 +128,13 @@
                   plain
                   @click="activateConfig(cfg.id)"
                 >设为当前</el-button>
+                <el-button
+                  size="small"
+                  plain
+                  :type="testingState[cfg.id] === 'ok' ? 'success' : testingState[cfg.id] === 'error' ? 'danger' : ''"
+                  :loading="testingState[cfg.id] === 'testing'"
+                  @click="testConfig(cfg.id)"
+                >{{ testingState[cfg.id] === 'ok' ? '✓ 正常' : testingState[cfg.id] === 'error' ? '✗ 失败' : '测试' }}</el-button>
                 <el-button size="small" plain @click="openCfgDialog(cfg)">编辑</el-button>
                 <el-button
                   size="small"
@@ -566,6 +573,28 @@ async function saveCfgDialog() {
     await loadAiConfigs()
   } finally {
     cfgSaving.value = false
+  }
+}
+
+// key: configId → 'testing' | 'ok' | 'error' | null
+const testingState = ref<Record<number, 'testing' | 'ok' | 'error' | null>>({})
+
+async function testConfig(id: number) {
+  testingState.value[id] = 'testing'
+  try {
+    const { data } = await axios.post(`/api/v1/ai-configs/${id}/test`)
+    if (data.ok) {
+      testingState.value[id] = 'ok'
+      ElMessage.success(`连通正常，延迟 ${data.latency_ms} ms`)
+    } else {
+      testingState.value[id] = 'error'
+      ElMessage.error(data.error || '请求失败')
+    }
+  } catch {
+    testingState.value[id] = 'error'
+    ElMessage.error('测试请求异常')
+  } finally {
+    setTimeout(() => { testingState.value[id] = null }, 4000)
   }
 }
 
