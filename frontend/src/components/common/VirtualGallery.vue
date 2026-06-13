@@ -40,8 +40,12 @@
             loading="lazy"
             class="gallery-thumb"
           />
+          <div v-if="photo.media_type === 'video'" class="video-duration-badge">
+            {{ formatDuration(photo.duration) }}
+          </div>
           <div class="gallery-overlay">
-            <span v-if="photo.duplicate_group_id" class="dup-badge">重复</span>
+            <span v-if="photo.media_type === 'video'" class="video-badge">▶</span>
+            <span v-else-if="photo.duplicate_group_id" class="dup-badge">重复</span>
             <span
               class="sharpness-dot"
               :style="{ background: sharpnessColor(photo.scores.sharpness_score) }"
@@ -86,6 +90,16 @@ const { containerRef, rows, virtualRows, totalHeight } = useVirtualScroll({
 
 function thumbnailUrl(id: number) {
   return photoApi.thumbnailUrl(id, 256)
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds == null) return ''
+  const s = Math.floor(seconds)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  return `${m}:${String(sec).padStart(2, '0')}`
 }
 
 /** Expose scroll container ref so parent can call scrollTop = 0 */
@@ -155,6 +169,24 @@ defineExpose({ containerRef })
   background: var(--el-color-warning);
   color: #fff;
   font-weight: 600;
+}
+
+.video-badge {
+  font-size: 14px;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+
+.video-duration-badge {
+  position: absolute;
+  bottom: 5px;
+  right: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  z-index: 2;
+  pointer-events: none;
 }
 
 .sharpness-dot {

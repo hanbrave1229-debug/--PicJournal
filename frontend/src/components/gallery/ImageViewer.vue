@@ -108,10 +108,23 @@
         <!-- ── Canvas ───────────────────────────────────────────── -->
         <div
           :class="['iv-canvas', showInfo && 'iv-canvas--shifted']"
-          @mousedown.prevent="startDrag"
-          @dblclick="resetTransform"
+          @mousedown.prevent="photo?.media_type !== 'video' && startDrag($event)"
+          @dblclick="photo?.media_type !== 'video' && resetTransform()"
         >
+          <!-- Video player -->
+          <video
+            v-if="photo.media_type === 'video'"
+            :key="photo.id"
+            :src="`/api/v1/videos/${photo.id}/stream`"
+            class="iv-video"
+            controls
+            autoplay
+            preload="metadata"
+          />
+
+          <!-- Photo viewer -->
           <div
+            v-else
             class="iv-img-wrap"
             :style="{
               transform: `translate(${pos.x}px, ${pos.y}px) scale(${zoom}) rotate(${rotation}deg)`,
@@ -126,9 +139,9 @@
             />
           </div>
 
-          <!-- Original mode label -->
+          <!-- Original mode label (photos only) -->
           <Transition name="iv-tag">
-            <div v-if="isOriginal" class="iv-orig-tag">
+            <div v-if="isOriginal && photo.media_type !== 'video'" class="iv-orig-tag">
               无损原图模式 (RAW)
             </div>
           </Transition>
@@ -136,40 +149,43 @@
 
         <!-- ── Bottom toolbar ───────────────────────────────────── -->
         <div :class="['iv-toolbar', showInfo && 'iv-toolbar--shifted']">
-          <!-- Original toggle -->
-          <button
-            :class="['iv-tb-btn', isOriginal && 'iv-tb-btn--active']"
-            @click="isOriginal = !isOriginal"
-          >
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z"/>
-            </svg>
-            {{ isOriginal ? '原图已显' : '查看原图' }}
-          </button>
-          <div class="iv-tb-sep" />
+          <!-- Photo-only controls -->
+          <template v-if="!isVideo">
+            <!-- Original toggle -->
+            <button
+              :class="['iv-tb-btn', isOriginal && 'iv-tb-btn--active']"
+              @click="isOriginal = !isOriginal"
+            >
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z"/>
+              </svg>
+              {{ isOriginal ? '原图已显' : '查看原图' }}
+            </button>
+            <div class="iv-tb-sep" />
 
-          <!-- Zoom in -->
-          <button class="iv-tb-icon" title="放大" @click="changeZoom(0.5)">
-            <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6"/>
-            </svg>
-          </button>
+            <!-- Zoom in -->
+            <button class="iv-tb-icon" title="放大" @click="changeZoom(0.5)">
+              <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6"/>
+              </svg>
+            </button>
 
-          <!-- Zoom out -->
-          <button class="iv-tb-icon" title="缩小" @click="changeZoom(-0.5)">
-            <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM7.5 10.5h6"/>
-            </svg>
-          </button>
+            <!-- Zoom out -->
+            <button class="iv-tb-icon" title="缩小" @click="changeZoom(-0.5)">
+              <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM7.5 10.5h6"/>
+              </svg>
+            </button>
 
-          <!-- Rotate -->
-          <button class="iv-tb-icon" title="旋转" @click="rotation = (rotation + 90) % 360">
-            <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
-            </svg>
-          </button>
+            <!-- Rotate -->
+            <button class="iv-tb-icon" title="旋转" @click="rotation = (rotation + 90) % 360">
+              <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+              </svg>
+            </button>
 
-          <div class="iv-tb-sep" />
+            <div class="iv-tb-sep" />
+          </template>
 
           <!-- Fullscreen -->
           <button class="iv-tb-icon" title="全屏" @click="toggleFullscreen">
@@ -236,9 +252,13 @@
                 <span>拍摄时间</span>
                 <span class="iv-sb-val">{{ exifTime }}</span>
               </div>
-              <div class="iv-sb-row">
+              <div v-if="!isVideo" class="iv-sb-row">
                 <span>分辨率</span>
                 <span class="iv-sb-good">{{ resFmt }}</span>
+              </div>
+              <div v-if="isVideo && photo.duration != null" class="iv-sb-row">
+                <span>时长</span>
+                <span class="iv-sb-val">{{ formatVideoDuration(photo.duration) }}</span>
               </div>
               <div class="iv-sb-row">
                 <span>文件大小</span>
@@ -413,6 +433,8 @@ const albums = computed(() => albumStore.albums)
 const liked = computed(() => props.photo != null && likedIds.value.has(props.photo.id))
 
 // ── Computed display ─────────────────────────────────────────────────
+const isVideo = computed(() => props.photo?.media_type === 'video')
+
 const thumbUrl = computed(() => {
   if (!props.photo) return ''
   // Default: 1080p thumbnail for a high-quality view without loading the raw file.
@@ -548,6 +570,15 @@ async function submitAlbum() {
 watch(showAlbum, (v) => {
   if (v && albumStore.albums.length === 0) albumStore.fetchAlbums()
 })
+
+function formatVideoDuration(seconds: number): string {
+  const s = Math.floor(seconds)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  return `${m}:${String(sec).padStart(2, '0')}`
+}
 
 // ── Histogram simulation ──────────────────────────────────────────────
 function genHistogram() {
@@ -832,6 +863,16 @@ onUnmounted(() => {
   filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.6));
   user-select: none;
   -webkit-user-drag: none;
+}
+
+/* Video player */
+.iv-video {
+  max-width: 94%;
+  max-height: 90%;
+  border-radius: 8px;
+  box-shadow: 0 24px 48px rgba(0,0,0,0.6);
+  outline: none;
+  background: #000;
 }
 
 /* Original tag */

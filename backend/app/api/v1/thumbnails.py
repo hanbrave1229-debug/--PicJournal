@@ -48,7 +48,20 @@ async def get_thumbnail(
         return FileResponse(cached_path, media_type="image/jpeg", headers=_CACHE_HEADERS)
 
     # On-demand generation
-    results = await generate_thumbnails(photo.file_path, photo.id)
+    source_path = photo.file_path
+    if getattr(photo, "media_type", "photo") == "video":
+        # Extract a JPEG frame from the video, then resize via Pillow pipeline
+        import tempfile
+        from app.core.video_processor import extract_video_frame
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            frame_path = tmp.name
+        ok = await extract_video_frame(photo.file_path, frame_path)
+        if ok:
+            source_path = frame_path
+        else:
+            raise HTTPException(status_code=500, detail="Video frame extraction failed")
+
+    results = await generate_thumbnails(source_path, photo.id)
     thumb_path = results.get(size)
 
     if not thumb_path or not Path(thumb_path).exists():

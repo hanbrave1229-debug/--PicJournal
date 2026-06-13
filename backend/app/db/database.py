@@ -97,6 +97,10 @@ async def _run_migrations(conn) -> None:
         await conn.execute(text("ALTER TABLE photos ADD COLUMN vision_analyzed_at DATETIME"))
     if "face_analyzed_at" not in photo_cols:
         await conn.execute(text("ALTER TABLE photos ADD COLUMN face_analyzed_at DATETIME"))
+    if "media_type" not in photo_cols:
+        await conn.execute(text("ALTER TABLE photos ADD COLUMN media_type TEXT NOT NULL DEFAULT 'photo'"))
+    if "duration" not in photo_cols:
+        await conn.execute(text("ALTER TABLE photos ADD COLUMN duration REAL"))
 
     # Face embedding dimension migration: face_recognition was 128-dim, insightface is 512-dim.
     # Clear incompatible legacy face data so the next /persons/run starts clean.

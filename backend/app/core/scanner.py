@@ -69,6 +69,41 @@ class FileInfo(NamedTuple):
     gps_lon: float | None
     thumbhash: str | None  # Dominant color as "#RRGGBB" for progressive placeholder
     sharpness_score: float | None  # Laplacian variance — higher = sharper
+    media_type: str = "photo"  # "photo" | "video"
+    duration: float | None = None  # video duration in seconds
+
+
+def _process_video_file(file_path: str) -> FileInfo | None:
+    """
+    Lightweight video file metadata extraction (runs in process pool, no FFmpeg here —
+    duration is fetched asynchronously in the main pipeline after upsert).
+    """
+    try:
+        path = Path(file_path)
+        stat = path.stat()
+        exif: ExifData = extract_exif(path)  # may return empty ExifData for videos
+        return FileInfo(
+            file_path=file_path,
+            file_name=path.name,
+            file_ext=path.suffix.lower(),
+            file_size=stat.st_size,
+            width=None,
+            height=None,
+            taken_at=exif.taken_at,
+            camera_make=exif.camera_make,
+            camera_model=exif.camera_model,
+            aperture=None,
+            shutter_speed=None,
+            iso=None,
+            gps_lat=exif.gps_lat,
+            gps_lon=exif.gps_lon,
+            thumbhash=None,
+            sharpness_score=None,
+            media_type="video",
+            duration=None,  # filled later via ffprobe
+        )
+    except Exception:
+        return None
 
 
 def _process_file(file_path: str) -> FileInfo | None:
@@ -79,6 +114,10 @@ def _process_file(file_path: str) -> FileInfo | None:
 
     Returns None on any unrecoverable error (corrupt file, not an image, etc.).
     """
+    # Route video files to lightweight handler (no Pillow open for videos)
+    if Path(file_path).suffix.lower() in set(get_settings().video_extensions):
+        return _process_video_file(file_path)
+
     try:
         from PIL import Image
 
@@ -142,6 +181,8 @@ def _process_file(file_path: str) -> FileInfo | None:
             gps_lon=exif.gps_lon,
             thumbhash=thumbhash,
             sharpness_score=sharpness_score,
+            media_type="photo",
+            duration=None,
         )
     except Exception:
         return None
@@ -151,10 +192,10 @@ def _process_file(file_path: str) -> FileInfo | None:
 
 async def _walk_images(root: str) -> list[str]:
     """
-    Recursively collect all image file paths under *root*.
+    Recursively collect all image and video file paths under *root*.
     Uses os.scandir via asyncio thread pool to stay non-blocking.
     """
-    exts = set(settings.supported_extensions)
+    exts = set(settings.supported_extensions) | set(settings.video_extensions)
     found: list[str] = []
 
     loop = asyncio.get_running_loop()
@@ -221,6 +262,9 @@ async def _upsert_photos(
             # dedicated scoring pipeline (which uses cv2 and is more accurate).
             if photo.sharpness_score is None and info.sharpness_score is not None:
                 photo.sharpness_score = info.sharpness_score
+            photo.media_type = info.media_type
+            if info.duration is not None:
+                photo.duration = info.duration
 
             # ── XMP sidecar read-in (non-destructive; only fills NULL fields) ──
             try:

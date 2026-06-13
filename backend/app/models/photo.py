@@ -82,6 +82,12 @@ class Photo(Base):
     is_stack_cover: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     """True for the one photo chosen as the representative of its stack."""
 
+    # ── Media type ───────────────────────────────────────────────────────────
+    media_type: Mapped[str] = mapped_column(String(10), nullable=False, default="photo")
+    """'photo' or 'video'. Used to route thumbnail vs video preview."""
+    duration: Mapped[float | None] = mapped_column(nullable=True)
+    """Video duration in seconds (NULL for photos)."""
+
     # ── Vision LLM analysis checkpoint ───────────────────────────────────────
     vision_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     """Set after successful VLM analysis. NULL = not yet processed; used for resume."""

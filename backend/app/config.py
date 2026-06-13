@@ -22,6 +22,14 @@ class Settings(BaseSettings):
         ".cr2", ".nef", ".arw", ".dng",
     )
 
+    # Supported video extensions
+    video_extensions: tuple[str, ...] = (
+        ".mp4", ".mov", ".avi", ".mkv", ".m4v", ".hevc", ".webm",
+    )
+
+    # FFmpeg concurrency limit — protect NAS CPU from saturation
+    ffmpeg_max_concurrent: int = 1
+
     # Concurrency
     worker_processes: int = 4
 

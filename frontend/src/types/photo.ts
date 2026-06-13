@@ -53,6 +53,10 @@ export interface Photo {
   stack_id: string | null
   /** True for the representative photo of a stack */
   is_stack_cover: boolean
+  /** 'photo' or 'video' */
+  media_type: 'photo' | 'video'
+  /** Video duration in seconds (null for photos) */
+  duration: number | null
   created_at: string
   updated_at: string
 }
