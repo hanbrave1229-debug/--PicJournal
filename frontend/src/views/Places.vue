@@ -3,7 +3,7 @@
  * Places.vue — Browse photos grouped by city.
  * Tile grid of city cards → click → city photo wall.
  */
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/index'
 import ImageViewer from '@/components/gallery/ImageViewer.vue'
@@ -41,6 +41,12 @@ const photoLoading = ref(false)
 const page        = ref(1)
 const hasMore     = ref(true)
 const searchQ     = ref('')
+
+// Geocoding scan
+const geoRunning  = ref(false)
+const geoPending  = ref<number | null>(null)
+const geoAvailable = ref(true)
+let geoPollTimer: ReturnType<typeof setInterval> | null = null
 
 // ImageViewer
 const viewerVisible = ref(false)
@@ -89,6 +95,8 @@ const viewerPhotos = computed(() =>
     is_archived: false,
     stack_id: null,
     is_stack_cover: false,
+    media_type: 'photo' as const,
+    duration: null,
     created_at: p.taken_at ?? '',
     updated_at: p.taken_at ?? '',
   }))
@@ -149,12 +157,43 @@ function navigateViewer(delta: 1 | -1) {
   }
 }
 
+// ── Geocoding scan ────────────────────────────────────────────────────────────
+
+async function fetchGeoStatus() {
+  try {
+    const res = await api.get<{ db_available: boolean; pending_count: number }>('/geocoding/status')
+    geoAvailable.value = res.data.db_available
+    geoPending.value   = res.data.pending_count
+    if (geoRunning.value && res.data.pending_count === 0) {
+      geoRunning.value = false
+      if (geoPollTimer) { clearInterval(geoPollTimer); geoPollTimer = null }
+      await fetchCities()  // refresh city list after geocoding finishes
+    }
+  } catch { /* ignore */ }
+}
+
+async function runGeoScan() {
+  if (geoRunning.value) return
+  geoRunning.value = true
+  try {
+    await api.post('/geocoding/run')
+    geoPollTimer = setInterval(fetchGeoStatus, 2000)
+  } catch {
+    geoRunning.value = false
+  }
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
   await fetchCities()
+  await fetchGeoStatus()
   const q = route.query.city as string | undefined
   if (q) selectCity(q)
+})
+
+onUnmounted(() => {
+  if (geoPollTimer) { clearInterval(geoPollTimer); geoPollTimer = null }
 })
 
 watch(() => route.query.city, (c) => {
@@ -177,6 +216,28 @@ watch(() => route.query.city, (c) => {
           clearable
           class="pl-search"
         />
+        <div class="pl-geo-wrap">
+          <el-button
+            size="small"
+            :loading="geoRunning"
+            :disabled="!geoAvailable"
+            :title="!geoAvailable ? '离线地理库未初始化，请联系管理员' : ''"
+            @click="runGeoScan"
+          >
+            <svg v-if="!geoRunning" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="margin-right:4px">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+              <circle cx="12" cy="9" r="2.5"/>
+            </svg>
+            {{ geoRunning ? '解析中…' : '扫描地点' }}
+          </el-button>
+          <span v-if="geoPending !== null && geoPending > 0" class="pl-geo-pending">
+            {{ geoPending }} 张待解析
+          </span>
+          <span v-else-if="geoPending === 0 && cities.length === 0" class="pl-geo-none">
+            无 GPS 照片
+          </span>
+        </div>
       </header>
 
       <div v-if="loading" class="pl-loading">
@@ -184,7 +245,27 @@ watch(() => route.query.city, (c) => {
       </div>
 
       <div v-else-if="filteredCities.length === 0" class="pl-empty">
-        <el-empty description="暂无地点数据，扫描含 GPS 信息的照片后自动生成" />
+        <div class="pl-empty-state">
+          <svg width="72" height="72" viewBox="0 0 24 24" fill="none"
+               stroke="var(--no-border-low)" stroke-width="1.2" stroke-linecap="round">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+            <circle cx="12" cy="9" r="2.5"/>
+          </svg>
+          <p class="pl-empty-title">还没有地点数据</p>
+          <p class="pl-empty-desc">
+            <template v-if="!geoAvailable">离线地理库尚未初始化，请联系管理员运行初始化脚本。</template>
+            <template v-else-if="geoPending === 0">照片库中暂无含 GPS 信息的照片。用手机拍摄并开启位置权限的照片会自动带有 GPS。</template>
+            <template v-else>点击「扫描地点」将 GPS 坐标解析为城市名称。</template>
+          </p>
+          <el-button
+            v-if="geoAvailable && geoPending && geoPending > 0"
+            type="primary"
+            :loading="geoRunning"
+            @click="runGeoScan"
+          >
+            开始扫描地点
+          </el-button>
+        </div>
       </div>
 
       <div v-else class="pl-city-grid">
@@ -482,9 +563,52 @@ watch(() => route.query.city, (c) => {
   padding: 12px 0;
 }
 
+/* ── Geo scan controls ───────────────────────────────────────────── */
+.pl-geo-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pl-geo-pending {
+  font-size: 11px;
+  color: var(--el-color-warning);
+  white-space: nowrap;
+}
+
+.pl-geo-none {
+  font-size: 11px;
+  color: var(--no-text-disabled);
+}
+
 /* ── States ──────────────────────────────────────────────────────── */
 .pl-loading { padding: 40px 0; }
 .pl-empty { display: flex; justify-content: center; padding: 60px 0; }
+
+.pl-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  max-width: 360px;
+  padding: 20px;
+}
+
+.pl-empty-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--no-text-primary);
+}
+
+.pl-empty-desc {
+  font-size: 13px;
+  color: var(--no-text-muted);
+  margin: 0;
+  line-height: 1.7;
+}
 
 /* ── Mobile (H5) ─────────────────────────────────────────────────── */
 @media (max-width: 640px) {
