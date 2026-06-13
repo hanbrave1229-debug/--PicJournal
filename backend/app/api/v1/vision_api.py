@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
+from app.db.database import get_db
 from app.models.photo import Photo
 from app.services.vision_llm import (
     caption_photo,

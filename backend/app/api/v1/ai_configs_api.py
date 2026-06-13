@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
+from app.db.database import get_db
 from app.models.ai_model_config import AiModelConfig
 from app.schemas.ai_model_config import (
     AiModelConfigCreate,
