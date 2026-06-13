@@ -71,7 +71,7 @@ def _get_face_app() -> "FaceAnalysis | None":
             # Limit ONNX Runtime threads per session to avoid CPU saturation on NAS
             sess_opts = ort.SessionOptions()
             sess_opts.inter_op_num_threads = 1
-            sess_opts.intra_op_num_threads = 2
+            sess_opts.intra_op_num_threads = 1  # 单核推理，避免 NAS CPU 饱和
 
             _face_app = FaceAnalysis(
                 name="buffalo_sc",
@@ -79,7 +79,7 @@ def _get_face_app() -> "FaceAnalysis | None":
                 session_options=sess_opts,
             )
             _face_app.prepare(ctx_id=0, det_size=(640, 640))
-            logger.info("InsightFace buffalo_sc loaded (threads capped at 2)")
+            logger.info("InsightFace buffalo_sc loaded (single-thread mode)")
         except Exception as exc:
             logger.error("InsightFace init failed: %s", exc)
     return _face_app
