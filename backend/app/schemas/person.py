@@ -20,6 +20,7 @@ class PersonResponse(BaseModel):
     photo_count: int   # injected by service layer, not from ORM directly
     created_at: datetime
     updated_at: datetime
+    preview_photos: list[str] = []  # 4 newest photo thumbnail URLs
 
     @computed_field
     @property
@@ -29,6 +30,14 @@ class PersonResponse(BaseModel):
             return None
         filename = os.path.basename(self.cover_path)
         return f"/api/v1/persons/crops/{filename}"
+
+
+class PersonListResponse(BaseModel):
+    """Paginated persons list with metadata."""
+    total: int
+    page: int
+    page_size: int
+    items: list[PersonResponse]
 
 
 class PersonRenameRequest(BaseModel):

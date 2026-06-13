@@ -331,15 +331,27 @@ async def _pipeline(force: bool) -> FaceRunResponse:
 
 # ── Query helpers ─────────────────────────────────────────────────────────────
 
-async def list_persons(include_hidden: bool = False) -> list[dict]:
+async def list_persons(
+    include_hidden: bool = False,
+    page: int = 1,
+    page_size: int = 10,
+) -> dict:
     """
-    Return all persons with photo counts.
+    Return paginated persons with photo counts and preview thumbnails.
 
-    Uses a single LEFT JOIN + GROUP BY instead of N+1 individual count queries,
-    which is critical when there are hundreds of persons.
+    Uses a single LEFT JOIN + GROUP BY for aggregation, then a small inner
+    query per person to fetch up to 4 preview photo thumbnail URLs.
     Falls back to the first available FaceCrop path when cover_path is NULL.
     """
+    from app.models.photo import Photo as PhotoModel  # avoid circular import
+
     async with AsyncSessionLocal() as session:
+        # Count total matching persons
+        count_stmt = select(func.count(Person.id))
+        if not include_hidden:
+            count_stmt = count_stmt.where(Person.is_hidden.is_(False))
+        total = (await session.execute(count_stmt)).scalar_one()
+
         # Subquery: distinct photo count per person
         photo_count_sq = (
             select(
@@ -380,10 +392,23 @@ async def list_persons(include_hidden: bool = False) -> list[dict]:
         if not include_hidden:
             stmt = stmt.where(Person.is_hidden.is_(False))
 
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
         rows = (await session.execute(stmt)).all()
 
-        return [
-            {
+        result_items = []
+        for p, photo_count, fallback_crop in rows:
+            # Fetch up to 4 newest photo IDs for this person (for preview thumbnails)
+            preview_stmt = (
+                select(PhotoModel.id)
+                .join(FaceCrop, FaceCrop.photo_id == PhotoModel.id)
+                .where(FaceCrop.person_id == p.id, PhotoModel.is_deleted.is_(False))
+                .order_by(PhotoModel.taken_at.desc().nullslast(), PhotoModel.created_at.desc())
+                .limit(4)
+            )
+            photo_ids = (await session.execute(preview_stmt)).scalars().all()
+            preview_urls = [f"/api/v1/thumbnails/{pid}?size=256" for pid in photo_ids]
+
+            result_items.append({
                 "id": p.id,
                 "name": p.name,
                 "cover_path": p.cover_path or fallback_crop,
@@ -392,9 +417,15 @@ async def list_persons(include_hidden: bool = False) -> list[dict]:
                 "photo_count": photo_count,
                 "created_at": p.created_at,
                 "updated_at": p.updated_at,
-            }
-            for p, photo_count, fallback_crop in rows
-        ]
+                "preview_photos": preview_urls,
+            })
+
+        return {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": result_items,
+        }
 
 
 async def rebuild_covers() -> dict:

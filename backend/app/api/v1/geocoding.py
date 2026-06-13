@@ -120,7 +120,7 @@ async def photos_by_city(
     return [
         {
             "id": p.id,
-            "thumbnail_url": f"/api/v1/thumbnails/{p.id}?size=256" if p.thumbnail_256 else None,
+            "thumbnail_url": f"/api/v1/thumbnails/{p.id}?size=256",
             "taken_at": p.taken_at.isoformat() if p.taken_at else None,
             "city": p.city,
             "province": p.province,

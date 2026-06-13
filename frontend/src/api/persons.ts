@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Person, FaceRunResponse, FaceRunStatus } from '@/types/person'
+import type { Person, FaceRunResponse, FaceRunStatus, PersonListResponse } from '@/types/person'
 import type { PhotoListResponse } from '@/types/photo'
 
 const BASE = '/api/v1/persons'
@@ -15,9 +15,9 @@ export const personsApi = {
     return axios.get(`${BASE}/status`)
   },
 
-  /** List all persons (with photo counts) */
-  list(includeHidden = false): Promise<{ data: Person[] }> {
-    return axios.get(BASE, { params: { include_hidden: includeHidden } })
+  /** List persons with pagination (default page_size=10) */
+  list(includeHidden = false, page = 1, pageSize = 10): Promise<{ data: PersonListResponse }> {
+    return axios.get(BASE, { params: { include_hidden: includeHidden, page, page_size: pageSize } })
   },
 
   /** Get single person by ID */

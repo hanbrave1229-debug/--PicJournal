@@ -85,8 +85,8 @@ export async function importPhotos(
   files.forEach(f => form.append('files', f))
   form.append('subdir', subdir)
 
+  // Do NOT set Content-Type manually — axios auto-sets multipart/form-data with boundary
   const res = await api.post<ImportPhotosResult>('/import/photos', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: e => {
       if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
     },
@@ -106,8 +106,8 @@ export async function importAlbumFromZip(
   form.append('album_name', albumName)
   form.append('subdir', subdir)
 
+  // Do NOT set Content-Type manually — axios auto-sets multipart/form-data with boundary
   const res = await api.post<ImportAlbumZipResult>('/import/album/zip', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: e => {
       if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
     },

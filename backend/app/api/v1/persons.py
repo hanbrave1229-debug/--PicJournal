@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from app.schemas.person import (
     FaceRunResponse,
     FaceRunStatus,
+    PersonListResponse,
     PersonMergeRequest,
     PersonRenameRequest,
     PersonResponse,
@@ -65,18 +66,29 @@ async def rebuild_covers() -> dict:
     return await face_service.rebuild_covers()
 
 
-@router.get("", response_model=list[PersonResponse], summary="List all persons")
+@router.get("", response_model=PersonListResponse, summary="List persons with pagination and preview photos")
 async def list_persons(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(10, ge=1, le=200, description="Items per page"),
     include_hidden: bool = Query(False),
-) -> list[PersonResponse]:
-    persons = await face_service.list_persons(include_hidden=include_hidden)
-    return [PersonResponse(**p) for p in persons]
+) -> PersonListResponse:
+    data = await face_service.list_persons(
+        include_hidden=include_hidden,
+        page=page,
+        page_size=page_size,
+    )
+    return PersonListResponse(
+        total=data["total"],
+        page=data["page"],
+        page_size=data["page_size"],
+        items=[PersonResponse(**p) for p in data["items"]],
+    )
 
 
 @router.get("/{person_id}", response_model=PersonResponse, summary="Get person by ID")
 async def get_person(person_id: int) -> PersonResponse:
-    persons = await face_service.list_persons(include_hidden=True)
-    for p in persons:
+    data = await face_service.list_persons(include_hidden=True, page=1, page_size=10000)
+    for p in data["items"]:
         if p["id"] == person_id:
             return PersonResponse(**p)
     raise HTTPException(status_code=404, detail="Person not found")
@@ -89,9 +101,8 @@ async def rename_person(person_id: int, body: PersonRenameRequest) -> PersonResp
     person = await face_service.rename_person(person_id, body.name)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
-    # Build response dict manually (count not on ORM object)
-    persons = await face_service.list_persons(include_hidden=True)
-    for p in persons:
+    data = await face_service.list_persons(include_hidden=True, page=1, page_size=10000)
+    for p in data["items"]:
         if p["id"] == person_id:
             return PersonResponse(**p)
     raise HTTPException(status_code=404, detail="Person not found")
@@ -105,8 +116,8 @@ async def hide_person(
     person = await face_service.hide_person(person_id, hidden=hidden)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
-    persons = await face_service.list_persons(include_hidden=True)
-    for p in persons:
+    data = await face_service.list_persons(include_hidden=True, page=1, page_size=10000)
+    for p in data["items"]:
         if p["id"] == person_id:
             return PersonResponse(**p)
     raise HTTPException(status_code=404, detail="Person not found")
@@ -120,8 +131,8 @@ async def lock_person(
     person = await face_service.lock_person(person_id, locked=locked)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
-    persons = await face_service.list_persons(include_hidden=True)
-    for p in persons:
+    data = await face_service.list_persons(include_hidden=True, page=1, page_size=10000)
+    for p in data["items"]:
         if p["id"] == person_id:
             return PersonResponse(**p)
     raise HTTPException(status_code=404, detail="Person not found")

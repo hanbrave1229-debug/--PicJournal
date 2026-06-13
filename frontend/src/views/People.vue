@@ -67,8 +67,8 @@
         <!-- Circular avatar -->
         <div class="pp-circle">
           <img
-            v-if="person.cover_path"
-            :src="personsApi.cropUrl(person.cover_path)"
+            v-if="person.cover_path || person.cover_url"
+            :src="person.cover_url || personsApi.cropUrl(person.cover_path)"
             :alt="person.name"
             class="pp-avatar"
             @error="onImgErr"
@@ -109,6 +109,26 @@
             />
           </template>
         </div>
+
+        <!-- Preview photos (up to 4 thumbnails) -->
+        <div v-if="person.preview_photos?.length" class="pp-preview-strip">
+          <img
+            v-for="url in person.preview_photos.slice(0, 4)"
+            :key="url"
+            :src="url"
+            class="pp-preview-thumb"
+            loading="lazy"
+            @error="onImgErr"
+          />
+        </div>
+      </div>
+
+      <!-- Load more trigger -->
+      <div v-if="personStore.hasMore" class="pp-load-more-item">
+        <button class="pp-load-more-btn" :disabled="personStore.loadingMore" @click.stop="loadMore">
+          <el-icon v-if="personStore.loadingMore" class="is-loading"><Loading /></el-icon>
+          <span v-else>更多<br/>{{ personStore.totalPersons - personStore.persons.length }} 人</span>
+        </button>
       </div>
     </div>
 
@@ -296,6 +316,11 @@ const visiblePersons = computed(() =>
 
 // Refetch when showHidden toggles
 watch(showHidden, (val) => personStore.fetchPersons(val))
+
+// Load next page (appends to strip)
+function loadMore() {
+  personStore.loadMorePersons(showHidden.value)
+}
 
 // ── Inline rename ──────────────────────────────────────────────────────────
 const editingId    = ref<number | null>(null)
@@ -604,6 +629,40 @@ onMounted(() => personStore.fetchPersons(false))
   background: rgba(245, 158, 11, 0.9);
   display: flex; align-items: center; justify-content: center;
   color: #fff; z-index: 2;
+}
+
+// ── Preview photos (4 mini thumbs below name) ─────────────────────────────
+.pp-preview-strip {
+  display: flex; gap: 2px; justify-content: center;
+  width: 88px; flex-wrap: wrap;
+}
+.pp-preview-thumb {
+  width: 20px; height: 20px; border-radius: 2px;
+  object-fit: cover; display: block;
+  flex-shrink: 0;
+}
+
+// ── Load more in strip ─────────────────────────────────────────────────────
+.pp-load-more-item {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  width: 60px;
+}
+.pp-load-more-btn {
+  width: 52px; height: 52px; border-radius: 50%;
+  border: 2px dashed var(--no-border-low);
+  background: none; cursor: pointer;
+  color: var(--no-text-muted); font-size: 11px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; line-height: 1.2; text-align: center;
+  transition: border-color 0.15s, color 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: var(--no-accent);
+    color: var(--no-accent);
+  }
+  &:disabled { cursor: default; }
+  .el-icon { font-size: 20px; }
 }
 
 // ── Name ──────────────────────────────────────────────────────────────────

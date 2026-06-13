@@ -547,8 +547,8 @@ function onProviderChange() {
  * Encrypt a plaintext API key with the server's ephemeral RSA-OAEP public key.
  * Returns base64 ciphertext. Falls back to plaintext if WebCrypto is unavailable.
  */
-async function encryptApiKey(plaintext: string): Promise<{ api_key_cipher: string } | { api_key: string }> {
-  if (!plaintext) return { api_key: '' }
+async function encryptApiKey(plaintext: string): Promise<Record<string, string>> {
+  if (!plaintext) return {}  // no key field → backend keeps existing encrypted key
   try {
     const { data } = await axios.get<{ pubkey: string }>('/api/v1/ai-configs/pubkey')
     const spkiDer = Uint8Array.from(atob(data.pubkey), c => c.charCodeAt(0))

@@ -21,10 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import scanner
 from app.core import ai_tagger
 from app.db.database import get_db, AsyncSessionLocal
+from app.models.ai_model_config import AiModelConfig
 from app.models.photo import Photo
 from app.schemas.scan import ScanRequest, ScanStatusResponse
 from app.services import scan_service
-from app.services.config_service import get_config
+from app.services.crypto import decrypt
 
 router = APIRouter()
 
@@ -127,12 +128,24 @@ async def start_tag_photos(
     if ai_tagger.progress.running:
         return {"started": False, "reason": "已有打标任务正在运行，请稍后再试"}
 
-    cfg = await get_config(db)
-    if not cfg.ai_api_key:
+    # Read from active AiModelConfig (new multi-config system)
+    active_result = await db.execute(
+        select(AiModelConfig).where(AiModelConfig.is_active.is_(True))
+    )
+    active_cfg = active_result.scalar_one_or_none()
+    if not active_cfg or not active_cfg.api_key_enc:
         raise HTTPException(
             status_code=400,
             detail="AI API Key 未配置，请前往「智能设置」完成配置",
         )
+    api_key = decrypt(active_cfg.api_key_enc)
+    if not api_key.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="AI API Key 未配置，请前往「智能设置」完成配置",
+        )
+    base_url = active_cfg.base_url or ""
+    model    = active_cfg.model or "gpt-4o-mini"
 
     # Fetch photos to tag
     q = select(Photo).where(Photo.is_deleted == False)  # noqa: E712
@@ -144,10 +157,6 @@ async def start_tag_photos(
 
     if not photos:
         return {"started": False, "reason": "没有需要打标的照片"}
-
-    api_key  = cfg.ai_api_key
-    base_url = cfg.ai_base_url or ""
-    model    = cfg.ai_model or "gpt-4o-mini"
 
     # Run in background — use a fresh session so the endpoint can return
     async def _bg() -> None:

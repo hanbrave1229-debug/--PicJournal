@@ -7,8 +7,15 @@ import type { Photo } from '@/types/photo'
 export const usePersonStore = defineStore('person', () => {
   const persons = ref<Person[]>([])
   const loading = ref(false)
+  const loadingMore = ref(false)
   const running = ref(false)
   const lastRunResult = ref<FaceRunResponse | null>(null)
+
+  // Pagination state
+  const currentPage = ref(1)
+  const totalPersons = ref(0)
+  const pageSize = ref(10)
+  const hasMore = computed(() => persons.value.length < totalPersons.value)
 
   // Active person whose photos are displayed below the strip
   const activePerson = ref<Person | null>(null)
@@ -19,14 +26,31 @@ export const usePersonStore = defineStore('person', () => {
   /** Total non-hidden persons */
   const total = computed(() => persons.value.filter((p) => !p.is_hidden).length)
 
-  // Fetch persons
+  // Fetch first page of persons (resets list)
   async function fetchPersons(includeHidden = false) {
     loading.value = true
+    currentPage.value = 1
     try {
-      const { data } = await personsApi.list(includeHidden)
-      persons.value = data
+      const { data } = await personsApi.list(includeHidden, 1, pageSize.value)
+      persons.value = data.items
+      totalPersons.value = data.total
     } finally {
       loading.value = false
+    }
+  }
+
+  // Append the next page to the existing list
+  async function loadMorePersons(includeHidden = false) {
+    if (!hasMore.value || loadingMore.value) return
+    loadingMore.value = true
+    try {
+      const nextPage = currentPage.value + 1
+      const { data } = await personsApi.list(includeHidden, nextPage, pageSize.value)
+      persons.value = [...persons.value, ...data.items]
+      totalPersons.value = data.total
+      currentPage.value = nextPage
+    } finally {
+      loadingMore.value = false
     }
   }
 
@@ -107,6 +131,7 @@ export const usePersonStore = defineStore('person', () => {
   return {
     persons,
     loading,
+    loadingMore,
     running,
     lastRunResult,
     activePerson,
@@ -114,7 +139,10 @@ export const usePersonStore = defineStore('person', () => {
     activePhotosTotal,
     loadingPhotos,
     total,
+    totalPersons,
+    hasMore,
     fetchPersons,
+    loadMorePersons,
     runAnalysis,
     selectPerson,
     renamePerson,

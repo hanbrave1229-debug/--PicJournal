@@ -126,11 +126,11 @@ async function doImportZip() {
     if (props.albumId) {
       const formData = new FormData()
       formData.append('file', zipFile.value)
+      // Do NOT set Content-Type manually — axios sets multipart/form-data with boundary automatically
       const { data: result } = await api.post(
         `/import/album/${props.albumId}/zip`,
         formData,
         {
-          headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (e: ProgressEvent) => {
             if (e.total) uploadPct.value = Math.round((e.loaded / e.total) * 100)
           },
@@ -234,7 +234,7 @@ async function doImportFromLibrary() {
       <el-tab-pane v-if="!props.hideTabs?.includes('photos')" label="上传照片" name="photos">
         <div class="imp-section">
 
-          <!-- Drop zone -->
+          <!-- Drop zone — v-model:file-list handles additions; no @change needed -->
           <el-upload
             v-model:file-list="photoFiles"
             multiple
@@ -243,7 +243,6 @@ async function doImportFromLibrary() {
             accept=".jpg,.jpeg,.png,.heic,.heif,.webp,.bmp,.gif,.tiff"
             drag
             class="imp-dropzone"
-            @change="(f: UploadFile) => { photoFiles.push(f) }"
           >
             <div class="imp-drop-inner">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
@@ -266,6 +265,7 @@ async function doImportFromLibrary() {
             <div class="imp-file-chips">
               <span v-for="f in photoFiles.slice(0, 20)" :key="f.uid" class="imp-chip">
                 {{ f.name }}
+                <button class="imp-chip-del" @click.stop="photoFiles = photoFiles.filter(x => x.uid !== f.uid)">×</button>
               </span>
               <span v-if="photoFiles.length > 20" class="imp-chip imp-chip--more">
                 +{{ photoFiles.length - 20 }} 张…
@@ -340,10 +340,8 @@ async function doImportFromLibrary() {
             </div>
           </el-upload>
 
+          <!-- Album name is auto-filled from ZIP filename (no user input needed) -->
           <el-form label-position="top">
-            <el-form-item v-if="!props.albumId" label="相册名称" required>
-              <el-input v-model="zipAlbumName" placeholder="旅行 2024" clearable />
-            </el-form-item>
             <el-form-item v-if="!props.albumId">
               <template #label>
                 目标子目录
@@ -368,7 +366,7 @@ async function doImportFromLibrary() {
           <el-button
             type="primary"
             :loading="loading"
-            :disabled="!zipFile || (!props.albumId && !zipAlbumName.trim())"
+            :disabled="!zipFile"
             style="width: 100%"
             @click="doImportZip"
           >
@@ -497,6 +495,18 @@ async function doImportFromLibrary() {
   white-space: nowrap;
 }
 .imp-chip--more { color: var(--no-text-muted); }
+.imp-chip-del {
+  margin-left: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--no-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 1px;
+  vertical-align: middle;
+  &:hover { color: var(--no-text-primary); }
+}
 
 /* Path hint */
 .imp-path-hint {
