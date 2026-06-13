@@ -153,3 +153,64 @@ async def delete_photo(
     if photo is None:
         raise HTTPException(status_code=404, detail="Photo not found")
     return {"id": photo_id, "deleted": True}
+
+
+# ── XMP sidecar ───────────────────────────────────────────────────────────────
+
+class XmpWriteRequest(BaseModel):
+    description: str | None = None
+    tags: list[str] | None = None
+    rating: int | None = None
+    title: str | None = None
+
+
+@router.post("/{photo_id}/xmp", summary="Write XMP sidecar for a photo")
+async def write_xmp(
+    photo_id: int,
+    body: XmpWriteRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Write (or update) an .xmp sidecar adjacent to the photo file.
+    Compatible with digiKam and Lightroom Classic.
+    Returns the path of the written sidecar.
+    """
+    photo = await get_photo_by_id(photo_id, db)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    from app.services.xmp_service import write_sidecar
+    try:
+        sidecar = write_sidecar(
+            photo.file_path,
+            description=body.description,
+            tags=body.tags,
+            rating=body.rating,
+            title=body.title,
+        )
+        return {"ok": True, "sidecar_path": str(sidecar)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"XMP write failed: {exc}") from exc
+
+
+@router.get("/{photo_id}/xmp", summary="Read XMP sidecar for a photo")
+async def read_xmp(
+    photo_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    photo = await get_photo_by_id(photo_id, db)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    from app.services.xmp_service import read_sidecar
+    xmp = read_sidecar(photo.file_path)
+    if xmp is None:
+        return {"found": False}
+    return {
+        "found": True,
+        "title": xmp.title,
+        "description": xmp.description,
+        "tags": xmp.tags,
+        "rating": xmp.rating,
+        "create_date": xmp.create_date.isoformat() if xmp.create_date else None,
+    }

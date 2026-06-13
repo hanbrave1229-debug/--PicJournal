@@ -273,11 +273,48 @@
               </div>
               <div v-if="photo.exif?.gps_lat" class="iv-sb-row">
                 <span>GPS</span>
-                <span class="iv-sb-val">{{ photo.exif.gps_lat?.toFixed(4) }}, {{ photo.exif.gps_lon?.toFixed(4) }}</span>
+                <span class="iv-sb-val">{{ photo.exif.gps_lat?.toFixed(5) }}, {{ photo.exif.gps_lon?.toFixed(5) }}</span>
               </div>
               <div v-if="!photo.exif?.camera_make && !photo.exif?.aperture" class="iv-sb-empty">
                 暂无 EXIF 数据
               </div>
+            </div>
+          </div>
+
+          <!-- Location -->
+          <div v-if="photo.city || photo.exif?.gps_lat" class="iv-sb-section">
+            <div class="iv-sb-label">拍摄地点</div>
+            <div class="iv-sb-card iv-sb-location">
+              <div v-if="photo.city" class="iv-loc-city">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                  <circle cx="12" cy="9" r="2.5"/>
+                </svg>
+                <span>
+                  <template v-if="photo.country && photo.country !== photo.city">{{ photo.country }} › </template>
+                  <template v-if="photo.province && photo.province !== photo.city">{{ photo.province }} · </template>
+                  <strong>{{ photo.city }}</strong>
+                </span>
+              </div>
+              <div v-if="photo.exif?.gps_lat" class="iv-loc-coords">
+                {{ photo.exif.gps_lat.toFixed(5) }}°N, {{ photo.exif.gps_lon!.toFixed(5) }}°E
+              </div>
+              <a
+                v-if="photo.exif?.gps_lat"
+                :href="`https://www.openstreetmap.org/?mlat=${photo.exif.gps_lat}&mlon=${photo.exif.gps_lon}#map=15/${photo.exif.gps_lat}/${photo.exif.gps_lon}`"
+                target="_blank"
+                rel="noopener"
+                class="iv-loc-map-link"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+                在地图中查看
+              </a>
             </div>
           </div>
 
@@ -963,6 +1000,34 @@ onUnmounted(() => {
 .iv-sb-warn { color: #fbbf24; font-weight: 600; }
 .iv-sb-score { color: var(--no-accent); font-size: 20px; font-weight: 700; }
 .iv-sb-empty { color: var(--no-text-muted); font-size: 11px; text-align: center; padding: 6px 0; }
+
+/* Location panel */
+.iv-sb-location { display: flex; flex-direction: column; gap: 6px; }
+.iv-loc-city {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--no-text-primary);
+  svg { flex-shrink: 0; color: var(--el-color-primary); }
+  strong { font-weight: 600; }
+}
+.iv-loc-coords {
+  font-size: 11px;
+  color: var(--no-text-muted);
+  font-family: monospace;
+  padding-left: 19px;
+}
+.iv-loc-map-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--el-color-primary);
+  text-decoration: none;
+  padding-left: 19px;
+  &:hover { text-decoration: underline; }
+}
 
 /* AI caption & tags */
 .iv-sb-caption {

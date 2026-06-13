@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import AsyncSessionLocal, get_db
@@ -31,6 +31,104 @@ class GeoResult(BaseModel):
     country: str | None
     province: str | None
     city: str | None
+
+
+class CityItem(BaseModel):
+    country: str | None
+    province: str | None
+    city: str
+    photo_count: int
+    cover_thumbnail: str | None
+
+
+@router.get("/cities", response_model=list[CityItem])
+async def list_cities(
+    country: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> list[CityItem]:
+    """
+    Return all cities that have at least one geocoded photo,
+    ordered by photo count descending.
+    Optionally filter by country.
+    """
+    # Aggregate city + cover thumbnail (first photo per city by taken_at desc)
+    city_q = (
+        select(
+            Photo.country,
+            Photo.province,
+            Photo.city,
+            func.count(Photo.id).label("photo_count"),
+        )
+        .where(
+            Photo.is_deleted.is_(False),
+            Photo.is_archived.is_(False),
+            Photo.city.is_not(None),
+        )
+        .group_by(Photo.country, Photo.province, Photo.city)
+        .order_by(func.count(Photo.id).desc())
+    )
+    if country:
+        city_q = city_q.where(Photo.country == country)
+
+    rows = (await db.execute(city_q)).fetchall()
+
+    items: list[CityItem] = []
+    for row in rows:
+        # Fetch cover: first non-deleted photo with a thumbnail in this city
+        cover_stmt = (
+            select(Photo.thumbnail_256)
+            .where(
+                Photo.is_deleted.is_(False),
+                Photo.city == row.city,
+                Photo.thumbnail_256.is_not(None),
+            )
+            .order_by(Photo.taken_at.desc())
+            .limit(1)
+        )
+        cover_row = (await db.execute(cover_stmt)).scalar_one_or_none()
+        items.append(CityItem(
+            country=row.country,
+            province=row.province,
+            city=row.city,
+            photo_count=row.photo_count,
+            cover_thumbnail=cover_row,
+        ))
+
+    return items
+
+
+@router.get("/photos", response_model=list[dict])
+async def photos_by_city(
+    city: str = Query(...),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(60, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Return photos belonging to a specific city, newest first."""
+    stmt = (
+        select(Photo)
+        .where(
+            Photo.is_deleted.is_(False),
+            Photo.is_archived.is_(False),
+            Photo.city == city,
+        )
+        .order_by(Photo.taken_at.desc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    )
+    photos = (await db.execute(stmt)).scalars().all()
+    return [
+        {
+            "id": p.id,
+            "thumbnail_256": p.thumbnail_256,
+            "taken_at": p.taken_at.isoformat() if p.taken_at else None,
+            "city": p.city,
+            "province": p.province,
+            "country": p.country,
+            "ai_caption": p.ai_caption,
+        }
+        for p in photos
+    ]
 
 
 @router.get("/status", response_model=GeoStatus)

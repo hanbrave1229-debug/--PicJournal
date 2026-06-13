@@ -30,3 +30,6 @@ numpy>=1.24.0
 # Utilities
 python-multipart==0.0.9
 httpx==0.27.0
+
+# CLIP model download (used only on first run; models cached in /data/models/clip/)
+huggingface-hub>=0.23.0

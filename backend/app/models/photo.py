@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean, DateTime, Float, ForeignKey,
-    Integer, String, func,
+    Integer, LargeBinary, String, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +72,15 @@ class Photo(Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     """Archived photos are hidden from the main timeline but NOT deleted physically."""
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # ── Semantic vector (CLIP-ViT-B/32, 512-dim float32 LE bytes) ────────────
+    clip_embedding: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+
+    # ── Burst stack ───────────────────────────────────────────────────────────
+    stack_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    """UUID of the burst stack this photo belongs to (NULL = standalone)."""
+    is_stack_cover: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    """True for the one photo chosen as the representative of its stack."""
 
     # ── Soft delete ───────────────────────────────────────────────────────────
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

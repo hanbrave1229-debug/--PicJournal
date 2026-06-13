@@ -83,6 +83,17 @@ async def _run_migrations(conn) -> None:
             text("ALTER TABLE persons ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT 0")
         )
 
+    # photos.clip_embedding — CLIP-ViT-B/32 semantic vector (512 float32, raw bytes)
+    existing_ph = await conn.execute(text("PRAGMA table_info(photos)"))
+    photo_cols = {row[1] for row in existing_ph.fetchall()}
+    if "clip_embedding" not in photo_cols:
+        await conn.execute(text("ALTER TABLE photos ADD COLUMN clip_embedding BLOB"))
+    if "stack_id" not in photo_cols:
+        await conn.execute(text("ALTER TABLE photos ADD COLUMN stack_id TEXT"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_photos_stack_id ON photos(stack_id)"))
+    if "is_stack_cover" not in photo_cols:
+        await conn.execute(text("ALTER TABLE photos ADD COLUMN is_stack_cover BOOLEAN NOT NULL DEFAULT 0"))
+
     # Face embedding dimension migration: face_recognition was 128-dim, insightface is 512-dim.
     # Clear incompatible legacy face data so the next /persons/run starts clean.
     try:

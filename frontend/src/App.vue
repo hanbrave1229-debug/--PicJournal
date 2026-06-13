@@ -1,7 +1,7 @@
 <template>
   <el-config-provider :locale="zhCn">
     <el-container class="app-layout">
-      <!-- ── Sidebar ─────────────────────────────────────────────── -->
+      <!-- ── Sidebar (desktop only) ────────────────────────────── -->
       <el-aside width="220px" class="app-aside">
         <!-- Logo -->
         <div class="app-logo">
@@ -37,6 +37,11 @@
             <el-icon><Notebook /></el-icon>
             <span class="menu-item-text">照片日记</span>
             <span class="menu-new-badge">New</span>
+          </el-menu-item>
+
+          <el-menu-item index="/places">
+            <el-icon><MapLocation /></el-icon>
+            <span>地点</span>
           </el-menu-item>
 
           <el-menu-item index="/archive">
@@ -91,6 +96,44 @@
         </el-main>
       </el-container>
     </el-container>
+
+    <!-- ── Mobile bottom tab bar ─────────────────────────────────── -->
+    <nav class="app-mobile-nav">
+      <router-link to="/gallery" class="app-mobile-tab" :class="{ active: currentRoute.startsWith('/gallery') }">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span>照片库</span>
+      </router-link>
+      <router-link to="/places" class="app-mobile-tab" :class="{ active: currentRoute.startsWith('/places') }">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+          <circle cx="12" cy="9" r="2.5"/>
+        </svg>
+        <span>地点</span>
+      </router-link>
+      <router-link to="/people" class="app-mobile-tab" :class="{ active: currentRoute.startsWith('/people') }">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        <span>人物</span>
+      </router-link>
+      <router-link to="/albums" class="app-mobile-tab" :class="{ active: currentRoute.startsWith('/albums') }">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        <span>相册</span>
+      </router-link>
+      <router-link to="/settings" class="app-mobile-tab" :class="{ active: currentRoute.startsWith('/settings') }">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+        <span>设置</span>
+      </router-link>
+    </nav>
   </el-config-provider>
 </template>
 
@@ -267,5 +310,52 @@ const currentRoute = computed(() => route.path)
   margin: 0 auto;
   padding: 24px;
   min-height: 100%;
+}
+
+// ── Mobile bottom tab bar (hidden on desktop) ─────────────────────────────
+.app-mobile-nav { display: none; }
+
+@media (max-width: 768px) {
+  // Hide sidebar on mobile
+  .app-aside { display: none !important; }
+
+  // Main fills full width; leave room for bottom nav
+  .app-main-inner {
+    padding: 12px 12px 80px; // bottom padding clears the nav
+  }
+
+  // Bottom tab bar
+  .app-mobile-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 58px;
+    background: var(--no-bg-card);
+    border-top: 1px solid var(--no-border-low);
+    z-index: 200;
+    // Safe-area support for notched phones
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+
+    .app-mobile-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      color: var(--no-text-secondary);
+      text-decoration: none;
+      font-size: 10px;
+      transition: color 0.15s;
+
+      svg { transition: color 0.15s; }
+
+      &.active, &:hover {
+        color: var(--el-color-primary);
+      }
+    }
+  }
 }
 </style>

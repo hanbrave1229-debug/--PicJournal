@@ -49,6 +49,10 @@ export interface Photo {
   city: string | null
   /** Archived photos are hidden from the main timeline */
   is_archived: boolean
+  /** UUID of the burst stack this photo belongs to (null = standalone) */
+  stack_id: string | null
+  /** True for the representative photo of a stack */
+  is_stack_cover: boolean
   created_at: string
   updated_at: string
 }

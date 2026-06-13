@@ -39,20 +39,37 @@
       </div>
 
       <div class="gl-toolbar-right">
-        <!-- NL Search bar -->
+        <!-- Search bar (NL + Semantic modes) -->
         <div class="gl-nl-bar">
+          <!-- Mode toggle -->
+          <div class="gl-search-mode">
+            <button
+              class="gl-mode-btn"
+              :class="{ 'is-active': searchMode === 'nl' }"
+              title="AI 语义 SQL 搜索（需要 API Key）"
+              @click="searchMode = 'nl'"
+            >AI</button>
+            <button
+              class="gl-mode-btn"
+              :class="{ 'is-active': searchMode === 'clip' }"
+              title="CLIP 向量搜索（完全离线）"
+              @click="searchMode = 'clip'"
+            >向量</button>
+          </div>
           <input
             v-model="nlQuery"
             class="gl-nl-input"
-            placeholder="✨ AI 搜索：如「春天的花」「2023年旅行」…"
-            @keydown.enter="runNLSearch"
+            :placeholder="searchMode === 'clip'
+              ? '🔮 向量搜索：如「夕阳海边」「笑脸」（离线）…'
+              : '✨ AI 搜索：如「春天的花」「2023年旅行」…'"
+            @keydown.enter="runSearch"
             @keydown.escape="clearNLSearch"
           />
           <button
             class="gl-nl-btn"
             :class="{ 'is-loading': nlSearching }"
             :disabled="nlSearching"
-            @click="runNLSearch"
+            @click="runSearch"
           >
             {{ nlSearching ? '…' : '搜索' }}
           </button>
@@ -137,6 +154,18 @@
               <!-- Sticky day header -->
               <div class="gl-day-header">
                 <span class="gl-day-title">{{ parseInt(month) }}月{{ parseInt(day) }}日</span>
+                <span
+                  v-if="dayCityLabel[`${year}-${month}-${day}`]"
+                  class="gl-day-city"
+                  @click="$router.push({ name: 'places', query: { city: dayCityLabel[`${year}-${month}-${day}`].split(' · ').pop() } })"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                    <circle cx="12" cy="9" r="2.5"/>
+                  </svg>
+                  {{ dayCityLabel[`${year}-${month}-${day}`] }}
+                </span>
                 <span class="gl-day-count">
                   {{ year }}年 · {{ groupedPhotos[year][month][day].length }} 张
                 </span>
@@ -203,6 +232,21 @@
                     title="加入日记"
                     @click.stop="openAddToDiary(photo)"
                   >📔</button>
+                  <!-- Stack badge: shown only for stack covers -->
+                  <div
+                    v-if="photo.is_stack_cover && photo.stack_id"
+                    class="gl-stack-badge"
+                    title="连拍堆叠 — 点击打开挑选工作区"
+                    @click.stop="$router.push(`/stacks/${photo.stack_id}`)"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                      <rect x="2" y="7" width="20" height="14" rx="2"/>
+                      <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+                      <line x1="12" y1="12" x2="12" y2="17"/>
+                      <line x1="9.5" y1="14.5" x2="14.5" y2="14.5"/>
+                    </svg>
+                  </div>
                 </div>
               </div>
             </div>
@@ -369,6 +413,30 @@ const groupedPhotos = computed<Record<string, Record<string, Record<string, Phot
     g[year][month][day].push(p)
   }
   return g
+})
+
+/**
+ * 计算每日（year-month-day）出现频次最高的城市名。
+ * 返回 "省·市" 格式（省和市相同时只显示市）。
+ */
+const dayCityLabel = computed<Record<string, string>>(() => {
+  const result: Record<string, string> = {}
+  for (const p of photoStore.photos) {
+    if (!p.city) continue
+    const raw = p.exif?.taken_at ?? p.created_at
+    const d = raw ? new Date(raw) : null
+    if (!d || isNaN(d.getTime())) continue
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    // frequency count per city per day
+    const label = p.province && p.province !== p.city
+      ? `${p.province} · ${p.city}`
+      : p.city
+    if (!result[key]) {
+      result[key] = label
+    }
+    // keep the most frequent: simple first-seen is good enough for daily grouping
+  }
+  return result
 })
 
 const sortedYears = computed(() =>
@@ -607,11 +675,21 @@ function onImgErr(e: Event) {
   img.style.opacity = '0.2'
 }
 
-// ── NL Search ─────────────────────────────────────────────────────────
-const nlQuery = ref('')
-const nlSearching = ref(false)
-const nlResults = ref<Photo[] | null>(null)  // null = not in search mode
-const nlResultClause = ref('')               // for debug / tooltip
+// ── Search (NL + CLIP) ────────────────────────────────────────────────
+const nlQuery      = ref('')
+const nlSearching  = ref(false)
+const nlResults    = ref<Photo[] | null>(null)  // null = not in search mode
+const nlResultClause = ref('')
+const searchMode   = ref<'nl' | 'clip'>('nl')
+
+/** Unified dispatcher: routes to NL or CLIP search based on mode toggle */
+async function runSearch(): Promise<void> {
+  if (searchMode.value === 'clip') {
+    await runClipSearch()
+  } else {
+    await runNLSearch()
+  }
+}
 
 /** Run NL search; switch the view to search-result mode. */
 async function runNLSearch(): Promise<void> {
@@ -627,6 +705,44 @@ async function runNLSearch(): Promise<void> {
   } catch (err: any) {
     const msg = err?.response?.data?.detail ?? 'AI 搜索失败，请检查 AI 配置'
     ElMessage.error(msg)
+  } finally {
+    nlSearching.value = false
+  }
+}
+
+/** CLIP offline semantic search */
+async function runClipSearch(): Promise<void> {
+  const q = nlQuery.value.trim()
+  if (!q) { clearNLSearch(); return }
+
+  nlSearching.value = true
+  try {
+    const { data } = await searchApi.semanticSearch(q, 60)
+    // Map SemanticSearchResult to Photo-like objects for reuse in grid
+    nlResults.value = data.map((r) => ({
+      id:            r.id,
+      thumbnail_256: r.thumbnail_256,
+      taken_at:      r.taken_at,
+      ai_caption:    r.ai_caption,
+      // fill required Photo fields with defaults so the grid renders
+      file_path: '', file_name: '', file_ext: '', file_size: 0,
+      width: null, height: null, md5_hash: null, phash: null,
+      thumbnail_1080: null, is_deleted: false, duplicate_group_id: null,
+      exif: { taken_at: r.taken_at, camera_make: null, camera_model: null,
+              aperture: null, shutter_speed: null, iso: null, gps_lat: null, gps_lon: null },
+      scores: { sharpness_score: null, exposure_score: null },
+      ai_tags: [], thumbhash: null, country: null, province: null, city: null,
+      is_archived: false, stack_id: null, is_stack_cover: false,
+      created_at: '', updated_at: '',
+    })) as any
+    if (data.length === 0) ElMessage.info('没有找到语义相似的照片，请先触发 CLIP 嵌入')
+  } catch (err: any) {
+    const detail = err?.response?.data?.detail ?? ''
+    if (detail.includes('不可用')) {
+      ElMessage.warning('CLIP 模型未就绪，请在设置页触发嵌入后重试')
+    } else {
+      ElMessage.error('向量搜索失败')
+    }
   } finally {
     nlSearching.value = false
   }
@@ -791,6 +907,21 @@ function clearNLSearch(): void {
   font-size: 11px;
   color: var(--no-text-secondary);
   font-family: monospace;
+}
+
+.gl-day-city {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--el-color-primary);
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+
+  svg { flex-shrink: 0; }
+
+  &:hover { opacity: 1; text-decoration: underline; }
 }
 
 /* ── Photo grid ──────────────────────────────────────────────────── */
@@ -1091,6 +1222,40 @@ function clearNLSearch(): void {
   &:hover { transform: scale(1.15); }
 }
 
+/* ── Stack badge ─────────────────────────────────────────────────── */
+.gl-stack-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  background: rgba(16, 185, 129, 0.88);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  transition: transform 0.15s;
+  &:hover { transform: scale(1.12); }
+}
+
+/* ── Search mode toggle ──────────────────────────────────────────── */
+.gl-search-mode {
+  display: flex; border-radius: 5px; overflow: hidden;
+  border: 1px solid var(--no-border-mid);
+}
+.gl-mode-btn {
+  padding: 0 8px; height: 28px; background: var(--no-bg-card);
+  border: none; color: var(--no-text-secondary); font-size: 11px;
+  cursor: pointer; transition: background 0.15s, color 0.15s;
+  &.is-active {
+    background: var(--no-accent);
+    color: #fff;
+  }
+  &:not(.is-active):hover { background: var(--no-border-low); }
+}
+
 /* ── NL Search bar ───────────────────────────────────────────────── */
 .gl-nl-bar {
   display: flex;
@@ -1270,4 +1435,42 @@ function clearNLSearch(): void {
 /* ── Keyframes ───────────────────────────────────────────────────── */
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 @keyframes spin   { to{transform:rotate(360deg)} }
+
+/* ── Mobile H5 ───────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .gl-root { padding: 0 6px 6px; }
+
+  /* Toolbar wraps on mobile */
+  .gl-toolbar {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 4px;
+    top: 0;
+  }
+
+  .gl-search-row { width: 100%; }
+  .gl-search-input { max-width: 100%; }
+
+  /* Day header stacks city below count */
+  .gl-day-header {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    padding: 6px 4px;
+    top: 56px; /* behind wrapped toolbar */
+  }
+
+  .gl-day-city { margin-left: 0; }
+
+  /* Tighter grid on phone */
+  .gl-photo-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 2px;
+  }
+
+  /* Hide time ruler on mobile */
+  .gl-time-ruler { display: none; }
+
+  /* Scroll container fills narrower space */
+  .gl-scroll { padding-right: 0; }
+}
 </style>

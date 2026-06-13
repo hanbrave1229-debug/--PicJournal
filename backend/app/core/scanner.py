@@ -222,6 +222,20 @@ async def _upsert_photos(
             if photo.sharpness_score is None and info.sharpness_score is not None:
                 photo.sharpness_score = info.sharpness_score
 
+            # ── XMP sidecar read-in (non-destructive; only fills NULL fields) ──
+            try:
+                from app.services.xmp_service import read_sidecar
+                xmp = read_sidecar(info.file_path)
+                if xmp:
+                    if xmp.description and not photo.ai_caption:
+                        photo.ai_caption = xmp.description
+                    if xmp.tags and not photo.ai_tags:
+                        photo.ai_tags = __import__("json").dumps(xmp.tags, ensure_ascii=False)
+                    if xmp.create_date and not photo.taken_at:
+                        photo.taken_at = xmp.create_date
+            except Exception:
+                pass  # XMP errors are non-fatal
+
             session.add(photo)
 
         await session.commit()

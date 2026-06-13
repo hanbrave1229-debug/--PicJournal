@@ -63,6 +63,16 @@ const router = createRouter({
       name: 'settings',
       component: () => import('@/views/Settings.vue'),
     },
+    {
+      path: '/stacks/:stackId',
+      name: 'stack-picker',
+      component: () => import('@/views/StackPicker.vue'),
+    },
+    {
+      path: '/places',
+      name: 'places',
+      component: () => import('@/views/Places.vue'),
+    },
   ],
 })
 
