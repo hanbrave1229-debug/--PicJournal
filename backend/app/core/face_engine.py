@@ -175,7 +175,7 @@ def cluster_faces(
 
     embeddings = np.array([f["embedding"] for f in faces], dtype=np.float32)
 
-    db = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine", n_jobs=-1)
+    db = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine", n_jobs=1)
     labels: np.ndarray = db.fit_predict(embeddings)
 
     return [

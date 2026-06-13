@@ -44,9 +44,10 @@ _running_lock = asyncio.Lock()
 _last_result: FaceRunResponse | None = None
 _is_running: bool = False
 
-# Single-thread executor: face detection is CPU-bound; one photo at a time
-# prevents all NAS cores from being saturated simultaneously.
+# CPU-bound detection: single worker prevents NAS core saturation.
 _face_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="face")
+# I/O-bound crop saves: separate pool so saves don't queue behind detection.
+_crop_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="crop")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -186,19 +187,23 @@ async def _pipeline(force: bool) -> FaceRunResponse:
             )
         ).all()
 
-    existing_faces: list[DetectedFace] = [
-        DetectedFace(
-            photo_id=c.photo_id,
-            bbox_top=c.bbox_top,
-            bbox_right=c.bbox_right,
-            bbox_bottom=c.bbox_bottom,
-            bbox_left=c.bbox_left,
-            embedding=[float(v) for v in c.embedding.split(",")],
-        )
-        for c in existing_crops
+    existing_faces: list[DetectedFace] = []
+    existing_person_ids: list[int | None] = []  # parallel to existing_faces
+    for c in existing_crops:
         # Only include embeddings with matching dimension (skip legacy 128-dim from face_recognition)
-        if c.embedding and len(c.embedding.split(",")) == EMBEDDING_DIM
-    ]
+        if not c.embedding or len(c.embedding.split(",")) != EMBEDDING_DIM:
+            continue
+        existing_faces.append(
+            DetectedFace(
+                photo_id=c.photo_id,
+                bbox_top=c.bbox_top,
+                bbox_right=c.bbox_right,
+                bbox_bottom=c.bbox_bottom,
+                bbox_left=c.bbox_left,
+                embedding=[float(v) for v in c.embedding.split(",")],
+            )
+        )
+        existing_person_ids.append(c.person_id)
 
     combined_faces = existing_faces + all_faces
 
@@ -207,20 +212,30 @@ async def _pipeline(force: bool) -> FaceRunResponse:
         _face_executor, cluster_faces, combined_faces
     )
 
-    # Only process the NEW portion (tail of combined list)
+    # Split the re-clustered result back into the existing and new portions.
+    existing_clustered = clustered[:len(existing_faces)]
     new_clustered = clustered[len(existing_faces):]
 
     # ── 5. Map cluster labels → Person rows ────────────────────────────────────
+    #
+    # Incremental clustering: a DBSCAN label may already contain faces that were
+    # assigned to a Person in a previous run. New faces sharing that label MUST
+    # reuse the existing person_id instead of spawning a duplicate Person —
+    # otherwise every /run re-creates everybody and the person list explodes.
     async with AsyncSessionLocal() as session:
-        # Load existing persons
-        existing_persons = (
-            await session.execute(select(Person))
-        ).scalars().all()
-
-        # cluster_label → person_id mapping
-        # We use DBSCAN labels starting from 0; shift by max existing person id
-        max_existing_label = len(existing_persons)
+        # Seed the mapping from already-persisted faces: label → existing person_id.
         label_to_person_id: dict[int, int] = {}
+        for face, person_id in zip(existing_clustered, existing_person_ids):
+            label = face["cluster_label"]
+            if label == -1 or person_id is None:
+                continue
+            label_to_person_id.setdefault(label, person_id)
+
+        # Determine how many persons already exist (for naming new ones).
+        existing_person_count = (
+            await session.execute(select(func.count(Person.id)))
+        ).scalar_one()
+
         persons_created = 0
         persons_updated = 0
 
@@ -230,13 +245,14 @@ async def _pipeline(force: bool) -> FaceRunResponse:
                 continue  # Noise face — no person assigned
 
             if label not in label_to_person_id:
-                # Create new Person
-                person = Person(name=f"人物 {max_existing_label + persons_created + 1}")
+                # Genuinely new cluster → create a Person.
+                person = Person(name=f"人物 {existing_person_count + persons_created + 1}")
                 session.add(person)
                 await session.flush()  # get ID
                 label_to_person_id[label] = person.id
                 persons_created += 1
             else:
+                # Face joins an existing (or just-created) person.
                 persons_updated += 1
 
         await session.commit()
@@ -258,12 +274,8 @@ async def _pipeline(force: bool) -> FaceRunResponse:
         )
         return crop_dst if ok else None
 
-    # Batch saves: 4 concurrent executors to avoid saturating I/O
-    sem = asyncio.Semaphore(4)
-
     async def _bounded_save(face: ClusteredFace, person_id: int | None) -> str | None:
-        async with sem:
-            return await loop.run_in_executor(_face_executor, _save_crop_sync, face, person_id)
+        return await loop.run_in_executor(_crop_executor, _save_crop_sync, face, person_id)
 
     crop_tasks = [
         _bounded_save(face, label_to_person_id.get(face["cluster_label"]))
@@ -470,18 +482,16 @@ async def rebuild_covers() -> dict:
 async def get_person_photos(person_id: int, page: int = 1, page_size: int = 80) -> dict:
     """Return paginated photos that contain a given person."""
     async with AsyncSessionLocal() as session:
-        # Distinct photo IDs for this person
-        subq = (
+        distinct_photo_ids = (
             select(FaceCrop.photo_id)
             .where(FaceCrop.person_id == person_id)
             .distinct()
             .subquery()
         )
 
-        total_result = await session.execute(
-            select(subq.c.photo_id)
-        )
-        total = len(total_result.all())
+        total = (
+            await session.execute(select(func.count()).select_from(distinct_photo_ids))
+        ).scalar_one()
 
         stmt = (
             select(Photo)
@@ -494,6 +504,69 @@ async def get_person_photos(person_id: int, page: int = 1, page_size: int = 80) 
         photos = (await session.execute(stmt)).scalars().all()
 
         return {"total": total, "page": page, "page_size": page_size, "items": photos}
+
+
+async def get_person_by_id(person_id: int) -> dict | None:
+    """Return a single person dict (same shape as list_persons items) or None."""
+    async with AsyncSessionLocal() as session:
+        from app.models.photo import Photo as PhotoModel  # avoid circular import
+
+        person = await session.get(Person, person_id)
+        if not person:
+            return None
+
+        photo_count = (
+            await session.execute(
+                select(func.count(FaceCrop.photo_id.distinct()))
+                .where(FaceCrop.person_id == person_id)
+            )
+        ).scalar_one()
+
+        cover_path = person.cover_path
+        if not cover_path:
+            row = (
+                await session.execute(
+                    select(FaceCrop.crop_path)
+                    .where(FaceCrop.person_id == person_id)
+                    .where(FaceCrop.crop_path.isnot(None))
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            cover_path = row
+
+        photo_ids = (
+            await session.execute(
+                select(PhotoModel.id)
+                .join(FaceCrop, FaceCrop.photo_id == PhotoModel.id)
+                .where(FaceCrop.person_id == person_id, PhotoModel.is_deleted.is_(False))
+                .order_by(PhotoModel.taken_at.desc().nullslast(), PhotoModel.created_at.desc())
+                .limit(4)
+            )
+        ).scalars().all()
+
+        return {
+            "id": person.id,
+            "name": person.name,
+            "cover_path": cover_path,
+            "is_hidden": person.is_hidden,
+            "is_locked": person.is_locked,
+            "photo_count": photo_count,
+            "created_at": person.created_at,
+            "updated_at": person.updated_at,
+            "preview_photos": [f"/api/v1/thumbnails/{pid}?size=256" for pid in photo_ids],
+        }
+
+
+async def reset_face_data() -> dict:
+    """Delete ALL face recognition data (FaceCrop + Person rows). Idempotent."""
+    async with AsyncSessionLocal() as session:
+        crop_result = await session.execute(delete(FaceCrop))
+        person_result = await session.execute(delete(Person))
+        await session.commit()
+    return {
+        "crops_deleted": crop_result.rowcount,
+        "persons_deleted": person_result.rowcount,
+    }
 
 
 async def rename_person(person_id: int, name: str) -> Person | None:

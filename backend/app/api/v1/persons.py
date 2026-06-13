@@ -56,6 +56,18 @@ async def get_status() -> FaceRunStatus:
 
 # ── Person CRUD ───────────────────────────────────────────────────────────────
 
+@router.post("/reset", summary="Delete ALL face recognition data — crops and persons")
+async def reset_face_data() -> dict:
+    """
+    Hard reset: deletes every FaceCrop and Person row.
+    Photos are NOT touched. After this, run POST /persons/run to re-detect from scratch.
+    Useful when the person list has ballooned due to incremental clustering bugs.
+    """
+    if face_service._is_running:
+        raise HTTPException(status_code=409, detail="Face analysis is currently running — wait for it to finish before resetting")
+    return await face_service.reset_face_data()
+
+
 @router.post("/rebuild-covers", summary="Backfill cover_path for persons missing one")
 async def rebuild_covers() -> dict:
     """
@@ -87,11 +99,10 @@ async def list_persons(
 
 @router.get("/{person_id}", response_model=PersonResponse, summary="Get person by ID")
 async def get_person(person_id: int) -> PersonResponse:
-    data = await face_service.list_persons(include_hidden=True, page=1, page_size=10000)
-    for p in data["items"]:
-        if p["id"] == person_id:
-            return PersonResponse(**p)
-    raise HTTPException(status_code=404, detail="Person not found")
+    p = await face_service.get_person_by_id(person_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return PersonResponse(**p)
 
 
 @router.patch("/{person_id}/name", response_model=PersonResponse, summary="Rename a person")
@@ -101,11 +112,8 @@ async def rename_person(person_id: int, body: PersonRenameRequest) -> PersonResp
     person = await face_service.rename_person(person_id, body.name)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
-    data = await face_service.list_persons(include_hidden=True, page=1, page_size=10000)
-    for p in data["items"]:
-        if p["id"] == person_id:
-            return PersonResponse(**p)
-    raise HTTPException(status_code=404, detail="Person not found")
+    p = await face_service.get_person_by_id(person_id)
+    return PersonResponse(**p)  # type: ignore[arg-type]
 
 
 @router.patch("/{person_id}/hide", response_model=PersonResponse, summary="Hide / unhide a person")
@@ -116,11 +124,8 @@ async def hide_person(
     person = await face_service.hide_person(person_id, hidden=hidden)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
-    data = await face_service.list_persons(include_hidden=True, page=1, page_size=10000)
-    for p in data["items"]:
-        if p["id"] == person_id:
-            return PersonResponse(**p)
-    raise HTTPException(status_code=404, detail="Person not found")
+    p = await face_service.get_person_by_id(person_id)
+    return PersonResponse(**p)  # type: ignore[arg-type]
 
 
 @router.patch("/{person_id}/lock", response_model=PersonResponse, summary="Lock / unlock a person")
@@ -131,11 +136,8 @@ async def lock_person(
     person = await face_service.lock_person(person_id, locked=locked)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
-    data = await face_service.list_persons(include_hidden=True, page=1, page_size=10000)
-    for p in data["items"]:
-        if p["id"] == person_id:
-            return PersonResponse(**p)
-    raise HTTPException(status_code=404, detail="Person not found")
+    p = await face_service.get_person_by_id(person_id)
+    return PersonResponse(**p)  # type: ignore[arg-type]
 
 
 @router.delete("/{person_id}", status_code=204, summary="Delete a person (keep photos)")
