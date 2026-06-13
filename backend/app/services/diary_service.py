@@ -175,14 +175,28 @@ async def generate_ai_draft(
     diary_date: date,
     photo_ids: list[int],
     mood: MoodType,
-    api_key: str,
-    base_url: str,
-    model: str,
+    # Deprecated params kept for backward compat; ignored when active config exists
+    api_key: str = "",
+    base_url: str = "",
+    model: str = "",
 ) -> str:
     """
     Collect photo metadata (EXIF, AI tags, AI captions) for the specified photos,
-    build a prompt, call the LLM, and return a 200-char diary draft.
+    build a prompt, call the active AiModelConfig, and return a diary draft.
+    Active config takes precedence over legacy params.
     """
+    from sqlalchemy import select as sa_select
+    from app.models.ai_model_config import AiModelConfig
+    from app.services.crypto import decrypt as crypto_decrypt
+
+    active_result = await db.execute(
+        sa_select(AiModelConfig).where(AiModelConfig.is_active.is_(True))
+    )
+    active = active_result.scalar_one_or_none()
+    if active:
+        api_key  = crypto_decrypt(active.api_key_enc)
+        base_url = active.base_url or ""
+        model    = active.model
     # Gather photo context
     photo_context_lines: list[str] = []
     if photo_ids:

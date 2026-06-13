@@ -75,26 +75,92 @@
     <Transition name="st-fade">
       <div v-if="activeTab === 'ai'" class="st-panel">
 
-        <!-- ── AI 集成商配置 ─────────────────────────────────────────── -->
+        <!-- ── 云端 AI 集成商（多配置） ──────────────────────────────── -->
         <div class="st-group">
-          <div class="st-group-label">云端 AI 集成商</div>
+          <div class="st-group-header">
+            <div class="st-group-label">云端 AI 集成商</div>
+            <el-button size="small" :icon="Plus" @click="openCfgDialog()">添加配置</el-button>
+          </div>
 
-          <!-- Provider dropdown -->
-          <div class="st-ai-form">
-            <div class="st-form-row">
-              <label class="st-form-label">集成商</label>
-              <el-select
-                v-model="aiCfg.provider"
-                placeholder="请选择集成商"
-                style="width:100%"
-                @change="selectProvider"
-              >
-                <el-option
-                  v-for="p in PROVIDERS"
-                  :key="p.id"
-                  :value="p.id"
-                  :label="p.label"
-                >
+          <!-- Config card list -->
+          <div v-if="aiConfigs.length" class="st-ai-configs">
+            <div
+              v-for="cfg in aiConfigs"
+              :key="cfg.id"
+              class="st-ai-card"
+              :class="{ 'st-ai-card--active': cfg.is_active }"
+            >
+              <!-- Active badge -->
+              <span v-if="cfg.is_active" class="st-ai-badge">当前使用</span>
+
+              <!-- Provider dot + name -->
+              <div class="st-ai-card-header">
+                <span
+                  class="st-provider-dot"
+                  :style="{ background: PROVIDERS.find(p => p.id === cfg.provider)?.color ?? '#888' }"
+                />
+                <span class="st-ai-card-name">{{ cfg.name }}</span>
+                <span class="st-ai-card-provider">{{ PROVIDERS.find(p => p.id === cfg.provider)?.label ?? cfg.provider }}</span>
+              </div>
+
+              <!-- Meta -->
+              <div class="st-ai-card-meta">
+                <span class="st-ai-meta-item">
+                  <span class="st-ai-meta-k">模型</span>
+                  <span class="st-ai-meta-v">{{ cfg.model }}</span>
+                </span>
+                <span class="st-ai-meta-item">
+                  <span class="st-ai-meta-k">Key</span>
+                  <span class="st-ai-meta-v st-ai-meta-key">{{ cfg.api_key_masked || '未设置' }}</span>
+                </span>
+                <span v-if="cfg.base_url" class="st-ai-meta-item">
+                  <span class="st-ai-meta-k">URL</span>
+                  <span class="st-ai-meta-v">{{ cfg.base_url }}</span>
+                </span>
+              </div>
+
+              <!-- Actions -->
+              <div class="st-ai-card-actions">
+                <el-button
+                  v-if="!cfg.is_active"
+                  size="small"
+                  type="primary"
+                  plain
+                  @click="activateConfig(cfg.id)"
+                >设为当前</el-button>
+                <el-button size="small" plain @click="openCfgDialog(cfg)">编辑</el-button>
+                <el-button
+                  size="small"
+                  plain
+                  type="danger"
+                  :disabled="cfg.is_active"
+                  @click="deleteConfig(cfg)"
+                >删除</el-button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty state -->
+          <div v-else class="st-ai-empty">
+            <el-icon size="28"><Connection /></el-icon>
+            <p>还没有 AI 配置，点击「添加配置」开始接入</p>
+          </div>
+        </div>
+
+        <!-- Add / Edit dialog -->
+        <el-dialog
+          v-model="cfgDialogVisible"
+          :title="editingCfg ? '编辑配置' : '添加 AI 配置'"
+          width="480px"
+          destroy-on-close
+        >
+          <el-form :model="cfgForm" label-position="top">
+            <el-form-item label="配置名称">
+              <el-input v-model="cfgForm.name" placeholder="例如：本地 Qwen VL、OpenAI GPT-4o" />
+            </el-form-item>
+            <el-form-item label="集成商">
+              <el-select v-model="cfgForm.provider" style="width:100%" @change="onProviderChange">
+                <el-option v-for="p in PROVIDERS" :key="p.id" :value="p.id" :label="p.label">
                   <div class="st-provider-option">
                     <span class="st-provider-option-dot" :style="{ background: p.color }" />
                     <span>{{ p.label }}</span>
@@ -102,98 +168,46 @@
                   </div>
                 </el-option>
               </el-select>
-            </div>
-
-            <!-- API Key -->
-            <div class="st-form-row">
-              <label class="st-form-label">API Key</label>
-              <div class="st-form-input-wrap">
-                <el-input
-                  v-model="aiCfg.apiKey"
-                  :type="showKey ? 'text' : 'password'"
-                  :placeholder="currentProvider?.keyPlaceholder ?? 'sk-...'"
-                  clearable
-                  class="st-key-input"
-                >
-                  <template #suffix>
-                    <el-icon style="cursor:pointer" @click="showKey = !showKey">
-                      <View v-if="!showKey" />
-                      <Hide v-else />
-                    </el-icon>
-                  </template>
-                </el-input>
-                <div class="st-key-hint">{{ maskedKey || '密钥未设置' }}</div>
-              </div>
-            </div>
-
-            <!-- Base URL (custom only) -->
-            <div v-if="currentProvider?.baseUrlRequired" class="st-form-row">
-              <label class="st-form-label">Base URL</label>
+            </el-form-item>
+            <el-form-item label="API Key">
               <el-input
-                v-model="aiCfg.baseUrl"
-                placeholder="https://your-endpoint.com/v1"
+                v-model="cfgForm.api_key"
+                :type="cfgShowKey ? 'text' : 'password'"
+                :placeholder="editingCfg ? '留空则保持原 Key 不变' : 'sk-...'"
+                clearable
+              >
+                <template #suffix>
+                  <el-icon style="cursor:pointer" @click="cfgShowKey = !cfgShowKey">
+                    <View v-if="!cfgShowKey" /><Hide v-else />
+                  </el-icon>
+                </template>
+              </el-input>
+              <div v-if="editingCfg?.api_key_masked" class="st-key-hint">
+                当前：{{ editingCfg.api_key_masked }}
+              </div>
+            </el-form-item>
+            <el-form-item label="Base URL">
+              <el-input
+                v-model="cfgForm.base_url"
+                placeholder="http://192.168.3.x:1234/v1（留空使用集成商默认）"
                 clearable
               />
-            </div>
-
-            <!-- Model input -->
-            <div class="st-form-row">
-              <label class="st-form-label">模型</label>
+            </el-form-item>
+            <el-form-item label="模型">
               <el-input
-                v-model="aiCfg.model"
-                :placeholder="currentProvider?.models[0]?.value ?? '例如 gpt-4o-mini'"
+                v-model="cfgForm.model"
+                :placeholder="PROVIDERS.find(p=>p.id===cfgForm.provider)?.models[0]?.value ?? '例如 gpt-4o'"
                 clearable
               />
-            </div>
-
-            <!-- Behaviour toggles -->
-            <div class="st-form-row st-form-row--inline">
-              <label class="st-form-label">启用云端识别</label>
-              <el-switch v-model="aiCfg.enabled" />
-            </div>
-            <div class="st-form-row st-form-row--inline">
-              <label class="st-form-label">扫描后自动标注</label>
-              <el-switch v-model="aiCfg.autoTag" />
-            </div>
-            <div class="st-form-row st-form-row--inline">
-              <label class="st-form-label">批处理大小</label>
-              <el-input-number
-                v-model="aiCfg.batchSize"
-                :min="1" :max="20"
-                size="small"
-                controls-position="right"
-              />
-            </div>
-
-            <!-- Action row -->
-            <div class="st-form-actions">
-              <!-- Connection test result badge -->
-              <div v-if="testResult" :class="['st-test-badge', testResult.ok ? 'is-ok' : 'is-err']">
-                <el-icon><SuccessFilled v-if="testResult.ok" /><CircleCloseFilled v-else /></el-icon>
-                <span>{{ testResult.message }}</span>
-                <span v-if="testResult.latency_ms" class="st-test-ms">{{ testResult.latency_ms }} ms</span>
-              </div>
-              <div style="flex:1" />
-              <el-button
-                :loading="testing"
-                plain
-                size="small"
-                @click="testConnection"
-              >
-                测试连接
-              </el-button>
-              <el-button
-                type="primary"
-                size="small"
-                :loading="saving"
-                @click="saveAiConfig"
-              >
-                保存配置
-              </el-button>
-            </div>
-
-          </div>
-        </div>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="cfgDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="cfgSaving" @click="saveCfgDialog">
+              {{ editingCfg ? '保存' : '创建' }}
+            </el-button>
+          </template>
+        </el-dialog>
 
         <!-- ── AI 批量打标 ─────────────────────────────────────────── -->
         <div class="st-section-divider">VLM 多模态批量打标</div>
@@ -460,10 +474,10 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  ArrowDown, CircleCloseFilled, Folder, FolderOpened,
-  Hide, Share, SuccessFilled, UserFilled, View,
+  ArrowDown, CircleCloseFilled, Connection, Folder, FolderOpened,
+  Hide, Plus, Share, SuccessFilled, UserFilled, View,
 } from '@element-plus/icons-vue'
 import { useScanStore } from '@/stores/useScanStore'
 import { useScanWebSocket } from '@/composables/useScanWebSocket'
@@ -473,6 +487,104 @@ import axios from 'axios'
 import { configApi } from '@/api/config'
 import { PROVIDERS } from '@/types/config'
 import type { AIProvider, ConnectionTestResponse } from '@/types/config'
+
+// ── AI 多配置管理 ───────────────────────────────────────────────────────────────
+
+interface AiModelConfig {
+  id: number
+  name: string
+  provider: string
+  api_key_masked: string
+  base_url: string | null
+  model: string
+  is_active: boolean
+}
+
+const aiConfigs     = ref<AiModelConfig[]>([])
+const cfgDialogVisible = ref(false)
+const editingCfg    = ref<AiModelConfig | null>(null)
+const cfgShowKey    = ref(false)
+const cfgSaving     = ref(false)
+const cfgForm       = reactive({
+  name:     '',
+  provider: 'custom' as AIProvider,
+  api_key:  '',
+  base_url: '',
+  model:    '',
+})
+
+async function loadAiConfigs() {
+  try {
+    const { data } = await axios.get<AiModelConfig[]>('/api/v1/ai-configs')
+    aiConfigs.value = data
+  } catch { /* ignore */ }
+}
+
+function openCfgDialog(cfg?: AiModelConfig) {
+  editingCfg.value  = cfg ?? null
+  cfgShowKey.value  = false
+  cfgForm.name      = cfg?.name     ?? ''
+  cfgForm.provider  = (cfg?.provider ?? 'custom') as AIProvider
+  cfgForm.api_key   = ''            // never pre-fill key
+  cfgForm.base_url  = cfg?.base_url ?? ''
+  cfgForm.model     = cfg?.model    ?? ''
+  cfgDialogVisible.value = true
+}
+
+function onProviderChange() {
+  const p = PROVIDERS.find(p => p.id === cfgForm.provider)
+  if (p) cfgForm.model = p.models[0]?.value ?? ''
+}
+
+async function saveCfgDialog() {
+  if (!cfgForm.name.trim() || !cfgForm.model.trim()) {
+    ElMessage.warning('请填写配置名称和模型名称')
+    return
+  }
+  cfgSaving.value = true
+  try {
+    if (editingCfg.value) {
+      await axios.put(`/api/v1/ai-configs/${editingCfg.value.id}`, {
+        name:     cfgForm.name.trim(),
+        provider: cfgForm.provider,
+        api_key:  cfgForm.api_key,   // empty = keep existing
+        base_url: cfgForm.base_url.trim() || null,
+        model:    cfgForm.model.trim(),
+      })
+      ElMessage.success('配置已更新')
+    } else {
+      await axios.post('/api/v1/ai-configs', {
+        name:     cfgForm.name.trim(),
+        provider: cfgForm.provider,
+        api_key:  cfgForm.api_key,
+        base_url: cfgForm.base_url.trim() || null,
+        model:    cfgForm.model.trim(),
+      })
+      ElMessage.success('配置已创建')
+    }
+    cfgDialogVisible.value = false
+    await loadAiConfigs()
+  } finally {
+    cfgSaving.value = false
+  }
+}
+
+async function activateConfig(id: number) {
+  await axios.post(`/api/v1/ai-configs/${id}/activate`)
+  await loadAiConfigs()
+  ElMessage.success('已切换为当前模型')
+}
+
+async function deleteConfig(cfg: AiModelConfig) {
+  await ElMessageBox.confirm(
+    `删除配置「${cfg.name}」？此操作不可撤销。`,
+    '确认删除',
+    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+  )
+  await axios.delete(`/api/v1/ai-configs/${cfg.id}`)
+  await loadAiConfigs()
+  ElMessage.success('已删除')
+}
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -518,7 +630,10 @@ const { connect } = useScanWebSocket()
 const newPath = ref('/photos')
 const scanning = ref(false)
 
-onMounted(() => scanStore.fetchTasks())
+onMounted(() => {
+  scanStore.fetchTasks()
+  loadAiConfigs()
+})
 
 async function startScan() {
   if (!newPath.value.trim()) return
@@ -773,6 +888,115 @@ async function startTagging(): Promise<void> {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 8px;
+}
+
+.st-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+
+  .st-group-label { margin-bottom: 0; }
+}
+
+// ── AI 多配置卡片 ─────────────────────────────────────────────────────────────
+
+.st-ai-configs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.st-ai-card {
+  border: 1px solid var(--no-border-low);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--no-bg-card);
+  position: relative;
+  transition: border-color 0.2s;
+
+  &--active {
+    border-color: rgba(52, 211, 153, 0.5);
+    background: rgba(52, 211, 153, 0.04);
+  }
+}
+
+.st-ai-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.st-ai-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.st-provider-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.st-ai-card-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.st-ai-card-provider {
+  font-size: 12px;
+  color: var(--no-text-muted);
+}
+
+.st-ai-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.st-ai-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.st-ai-meta-k {
+  color: var(--no-text-muted);
+}
+
+.st-ai-meta-v {
+  color: var(--no-text-secondary);
+
+  &.st-ai-meta-key {
+    font-family: var(--no-font-mono);
+    letter-spacing: 0.02em;
+  }
+}
+
+.st-ai-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.st-ai-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 0;
+  color: var(--no-text-muted);
+  font-size: 13px;
 }
 
 // ── Card container ────────────────────────────────────────────────────────────
