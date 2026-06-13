@@ -13,6 +13,7 @@ Thread-safety: a module-level lock prevents concurrent runs.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 from pathlib import Path
 
@@ -41,6 +42,10 @@ settings = get_settings()
 _running_lock = asyncio.Lock()
 _last_result: FaceRunResponse | None = None
 _is_running: bool = False
+
+# Single-thread executor: face detection is CPU-bound; one photo at a time
+# prevents all NAS cores from being saturated simultaneously.
+_face_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="face")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -114,11 +119,14 @@ async def _pipeline(force: bool) -> FaceRunResponse:
     loop = asyncio.get_running_loop()
     all_faces: list[DetectedFace] = []
 
-    for row in rows:
+    for i, row in enumerate(rows):
         faces = await loop.run_in_executor(
-            None, detect_faces_in_image, row.id, row.file_path
+            _face_executor, detect_faces_in_image, row.id, row.file_path
         )
         all_faces.extend(faces)
+        # Yield to event loop every 5 photos so other API requests stay responsive
+        if i % 5 == 0:
+            await asyncio.sleep(0)
 
     logger.info("Face analysis: detected %d faces", len(all_faces))
 

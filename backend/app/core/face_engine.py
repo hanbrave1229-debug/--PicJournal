@@ -9,12 +9,19 @@ Backend: InsightFace (buffalo_sc) + ONNX Runtime
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import TypedDict
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# Limit ONNX Runtime / OpenMP thread count so face recognition doesn't saturate
+# all NAS CPU cores and block other requests. Set before any ONNX import.
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
 
 # ── Optional heavy imports ────────────────────────────────────────────────────
 try:
@@ -60,12 +67,19 @@ def _get_face_app() -> "FaceAnalysis | None":
     global _face_app
     if _face_app is None and FACE_RECOGNITION_AVAILABLE:
         try:
+            import onnxruntime as ort  # type: ignore
+            # Limit ONNX Runtime threads per session to avoid CPU saturation on NAS
+            sess_opts = ort.SessionOptions()
+            sess_opts.inter_op_num_threads = 1
+            sess_opts.intra_op_num_threads = 2
+
             _face_app = FaceAnalysis(
                 name="buffalo_sc",
                 providers=["CPUExecutionProvider"],
+                session_options=sess_opts,
             )
             _face_app.prepare(ctx_id=0, det_size=(640, 640))
-            logger.info("InsightFace buffalo_sc loaded successfully")
+            logger.info("InsightFace buffalo_sc loaded (threads capped at 2)")
         except Exception as exc:
             logger.error("InsightFace init failed: %s", exc)
     return _face_app
