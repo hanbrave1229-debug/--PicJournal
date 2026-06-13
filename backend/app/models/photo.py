@@ -82,6 +82,10 @@ class Photo(Base):
     is_stack_cover: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     """True for the one photo chosen as the representative of its stack."""
 
+    # ── Vision LLM analysis checkpoint ───────────────────────────────────────
+    vision_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    """Set after successful VLM analysis. NULL = not yet processed; used for resume."""
+
     # ── Soft delete ───────────────────────────────────────────────────────────
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
