@@ -3,13 +3,18 @@ Photos API — paginated list and single photo detail.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
+from app.models.photo import Photo
 from app.schemas.photo import PhotoListResponse, PhotoResponse
 from app.services.photo_service import get_photo_by_id, list_photos, soft_delete_photo
 
@@ -45,6 +50,61 @@ async def list_photos_endpoint(
         page_size=page_size,
         items=[PhotoResponse.from_orm(p) for p in photos],
     )
+
+
+class PickerPhotoItem(BaseModel):
+    id: int
+    thumbnail_256: str | None
+    taken_at: datetime | None
+    province: str | None = None
+    city: str | None = None
+
+
+class PickerResponse(BaseModel):
+    year: int
+    month: int
+    total: int
+    photos: List[PickerPhotoItem]
+
+
+@router.get("/picker", response_model=PickerResponse, summary="按年月筛选照片，供日记封面选择器使用")
+async def get_photos_for_picker(
+    year: int = Query(..., ge=2000, le=2100, description="年份"),
+    month: int = Query(..., ge=1, le=12, description="月份 (1-12)"),
+    db: AsyncSession = Depends(get_db),
+) -> PickerResponse:
+    """
+    返回指定年月内所有未删除、未归档的照片（仅缩略图 + 时间 + 地理），
+    用于日记弹窗跨月挑选封面快照。按 taken_at 倒序排列。
+    """
+    start = datetime(year, month, 1)
+    end = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+
+    stmt = (
+        select(Photo)
+        .where(
+            and_(
+                Photo.is_deleted.is_(False),
+                Photo.is_archived.is_(False),
+                Photo.taken_at >= start,
+                Photo.taken_at < end,
+            )
+        )
+        .order_by(Photo.taken_at.desc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    items = [
+        PickerPhotoItem(
+            id=p.id,
+            thumbnail_256=p.thumbnail_256,
+            taken_at=p.taken_at,
+            province=p.province,
+            city=p.city,
+        )
+        for p in rows
+    ]
+    return PickerResponse(year=year, month=month, total=len(items), photos=items)
 
 
 @router.get("/{photo_id}", response_model=PhotoResponse, summary="Get single photo detail")
