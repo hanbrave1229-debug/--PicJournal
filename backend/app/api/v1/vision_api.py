@@ -147,6 +147,19 @@ async def gen_tags_batch(body: BatchTagRequest, db: AsyncSession = Depends(get_d
                 photo.vision_analyzed_at = datetime.now(timezone.utc)
                 await db.commit()
 
+                # Write-back to XMP sidecar (non-fatal)
+                try:
+                    import asyncio as _aio
+                    from app.services.xmp_service import write_sidecar as _write_xmp
+                    file_path = photo.file_path
+                    ai_caption = photo.ai_caption
+                    await _aio.get_running_loop().run_in_executor(
+                        None,
+                        lambda: _write_xmp(file_path, description=ai_caption, tags=tags),
+                    )
+                except Exception as _xe:
+                    pass  # XMP write-back failure must not abort the batch
+
                 return {"photo_id": pid, "tags": tags, "ok": True, "skipped": False}
             except Exception as e:
                 await db.rollback()

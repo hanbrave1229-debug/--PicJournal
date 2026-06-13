@@ -172,6 +172,23 @@ async def tag_single_photo(
         photo.ai_caption = caption[:2048] if caption else None
         photo.ai_tags = json.dumps(tags, ensure_ascii=False) if tags else None
         await db.commit()
+
+        # Write-back to XMP sidecar (non-fatal)
+        try:
+            from app.services.xmp_service import write_sidecar
+            import asyncio as _aio
+            loop = _aio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: write_sidecar(
+                    photo.file_path,
+                    description=photo.ai_caption,
+                    tags=tags,
+                ),
+            )
+        except Exception as _xmp_err:
+            logger.warning("XMP write-back failed for photo id=%s: %s", photo.id, _xmp_err)
+
         return True
 
     except (httpx.HTTPStatusError, httpx.RequestError) as exc:

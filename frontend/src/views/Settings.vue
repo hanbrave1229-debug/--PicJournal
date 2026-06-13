@@ -351,6 +351,45 @@
 
         </div>
 
+        <div class="st-section-divider">XMP 元数据同步</div>
+
+        <div class="st-card">
+          <!-- Export DB → XMP -->
+          <div class="st-row st-row--tall">
+            <div class="st-row-info">
+              <div class="st-row-title">导出标签到 XMP</div>
+              <div class="st-row-desc">将 AI 生成的描述和标签写回照片旁的 .xmp 文件（兼容 Lightroom / digiKam）</div>
+            </div>
+            <el-button
+              size="small"
+              :loading="xmpExporting"
+              @click="xmpExport"
+            >导出</el-button>
+          </div>
+
+          <!-- Import XMP → DB -->
+          <div class="st-row st-row--tall">
+            <div class="st-row-info">
+              <div class="st-row-title">从 XMP 导入（以文件为准）</div>
+              <div class="st-row-desc">当 .xmp 文件比数据库记录更新时，用 XMP 覆盖 DB（适用于外部软件编辑后同步）</div>
+            </div>
+            <el-button
+              size="small"
+              :loading="xmpImporting"
+              @click="xmpImport"
+            >导入</el-button>
+          </div>
+
+          <!-- Conflict list -->
+          <div class="st-row st-row--tall st-row--last">
+            <div class="st-row-info">
+              <div class="st-row-title">查看冲突</div>
+              <div class="st-row-desc">列出 XMP 与数据库内容不一致的照片</div>
+            </div>
+            <el-button size="small" plain @click="xmpShowConflicts">查看冲突</el-button>
+          </div>
+        </div>
+
       </div>
     </Transition>
 
@@ -873,6 +912,59 @@ async function startTagging(): Promise<void> {
     tagPollTimer = setInterval(pollTagStatus, 1500)
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail ?? '启动打标失败，请检查 AI 配置')
+  }
+}
+
+// ── XMP Sync ──────────────────────────────────────────────────────────────────
+
+const xmpExporting = ref(false)
+const xmpImporting = ref(false)
+
+async function xmpExport() {
+  xmpExporting.value = true
+  try {
+    const { data } = await axios.post('/api/v1/xmp-sync/export')
+    ElMessage.success(`XMP 导出完成：更新 ${data.updated} 个文件，跳过 ${data.skipped}，失败 ${data.errors}`)
+  } catch {
+    ElMessage.error('XMP 导出失败')
+  } finally {
+    xmpExporting.value = false
+  }
+}
+
+async function xmpImport() {
+  xmpImporting.value = true
+  try {
+    const { data } = await axios.post('/api/v1/xmp-sync/import')
+    ElMessage.success(`XMP 导入完成：更新 ${data.updated} 条记录，跳过 ${data.skipped}，失败 ${data.errors}`)
+  } catch {
+    ElMessage.error('XMP 导入失败')
+  } finally {
+    xmpImporting.value = false
+  }
+}
+
+async function xmpShowConflicts() {
+  try {
+    const { data } = await axios.get<Array<{
+      photo_id: number; file_path: string
+      db_caption: string | null; xmp_caption: string | null
+      db_tags: string[]; xmp_tags: string[]
+    }>>('/api/v1/xmp-sync/conflicts')
+    if (data.length === 0) {
+      ElMessage.success('没有冲突，DB 与 XMP 完全一致')
+    } else {
+      const lines = data.slice(0, 10).map(c =>
+        `• ${c.file_path.split('/').pop()}\n  DB: ${c.db_caption ?? '(空)'} → XMP: ${c.xmp_caption ?? '(空)'}`
+      ).join('\n')
+      ElMessageBox.alert(
+        `共 ${data.length} 个冲突（显示前 10 条）:\n\n${lines}`,
+        'XMP 冲突列表',
+        { confirmButtonText: '知道了', customStyle: { whiteSpace: 'pre-wrap' } }
+      )
+    }
+  } catch {
+    ElMessage.error('获取冲突列表失败')
   }
 }
 </script>
