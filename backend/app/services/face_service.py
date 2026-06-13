@@ -54,15 +54,12 @@ async def get_status() -> dict:
     return {"running": _is_running, "last_run_result": _last_result}
 
 
-async def run_face_analysis(force: bool = False) -> FaceRunResponse:
+def start_face_analysis(force: bool = False) -> None:
     """
-    Run the full face detection + clustering pipeline.
-
-    Args:
-        force: If True, re-detect faces for photos that already have FaceCrops.
+    Non-blocking entry point: validate state, then fire an asyncio background task.
+    Returns immediately — caller should poll /persons/status for progress.
+    Raises RuntimeError (→ 409) if preconditions fail or already running.
     """
-    global _is_running, _last_result
-
     if not FACE_RECOGNITION_AVAILABLE:
         raise RuntimeError(
             "insightface 或 onnxruntime 未正确安装。"
@@ -70,7 +67,36 @@ async def run_face_analysis(force: bool = False) -> FaceRunResponse:
         )
     if not SKLEARN_AVAILABLE:
         raise RuntimeError("scikit-learn 未安装，无法执行人脸聚类。")
+    if _is_running:
+        raise RuntimeError("Face analysis already running")
 
+    asyncio.create_task(_run_in_background(force=force))
+
+
+async def _run_in_background(force: bool) -> None:
+    """Internal background coroutine — updates _is_running / _last_result."""
+    global _is_running, _last_result
+    async with _running_lock:
+        _is_running = True
+        try:
+            result = await _pipeline(force=force)
+            _last_result = result
+        except Exception as exc:
+            logger.error("Face analysis pipeline error: %s", exc, exc_info=True)
+        finally:
+            _is_running = False
+
+
+async def run_face_analysis(force: bool = False) -> FaceRunResponse:
+    """
+    Blocking entry (kept for internal/test use). Use start_face_analysis() from API.
+    """
+    global _is_running, _last_result
+
+    if not FACE_RECOGNITION_AVAILABLE:
+        raise RuntimeError("insightface 未安装")
+    if not SKLEARN_AVAILABLE:
+        raise RuntimeError("scikit-learn 未安装")
     if _is_running:
         raise RuntimeError("Face analysis already running")
 

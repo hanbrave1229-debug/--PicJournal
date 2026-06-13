@@ -14,7 +14,7 @@ Endpoints:
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from app.schemas.person import (
@@ -32,21 +32,19 @@ router = APIRouter()
 
 # ── Run face analysis ─────────────────────────────────────────────────────────
 
-@router.post("/run", response_model=FaceRunResponse, summary="Run face detection + clustering")
+@router.post("/run", summary="Kick off face detection in background — returns 202 immediately")
 async def run_face_analysis(
-    background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Re-process photos that already have face data"),
-) -> FaceRunResponse:
+) -> dict:
     """
-    Detect faces in all photos, cluster into persons.
-    Runs synchronously (may take several minutes for large libraries).
-    Use force=true to re-analyse already-processed photos.
+    Start face detection + clustering as a background asyncio task and return at once.
+    Poll GET /persons/status to track progress. Safe to navigate away.
     """
     try:
-        result = await face_service.run_face_analysis(force=force)
-        return result
+        face_service.start_face_analysis(force=force)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "started", "message": "人脸识别已在后台启动，通过 /persons/status 查询进度"}
 
 
 @router.get("/status", response_model=FaceRunStatus, summary="Face analysis run status")
