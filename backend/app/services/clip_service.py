@@ -2,13 +2,16 @@
 CLIP 嵌入服务
 =============
 • 批量为照片生成 512-dim 向量并存入 DB（clip_embedding BLOB）
-• 构建内存索引（numpy 矩阵），支持 cosine-similarity 实时检索
-• 优雅降级：CLIP 不可用时返回 available=False，不影响其他功能
+• 向量索引通过 numpy memmap 文件持久化到磁盘，避免全量加载进 RAM
+  — 旧版 np.stack 在 10万张照片时会消耗 ~200MB RAM 并触发 OOM Killer
+  — 新版 mmap：读写均通过磁盘映射，常驻内存接近零
+• 查询时将 mmap 与查询向量做矩阵乘法，仍走 numpy C++ 路径，性能不损失
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import struct
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -17,6 +20,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from sqlalchemy import select, text
 
+from app.config import get_settings
 from app.db.database import AsyncSessionLocal
 from app.models.photo import Photo
 
@@ -24,14 +28,22 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 # Single-thread executor to avoid blocking the event loop
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="clip")
 
-# ── In-memory index ────────────────────────────────────────────────────────────
-# Rebuilt after batch embedding; shape (N, 512)
-_index_matrix: np.ndarray | None = None
+_DIMS = 512  # CLIP-ViT-B/32 embedding dimension
+
+# Mmap index files on disk — ids (int64) and matrix (float32)
+_INDEX_DIR = Path(settings.thumbnails_dir).parent / "db"
+_IDS_PATH   = _INDEX_DIR / "clip_ids.npy"
+_VECS_PATH  = _INDEX_DIR / "clip_vecs.npy"
+
+# In-process cache: lightweight Python list of IDs + mmap array handle
+# The mmap keeps the file descriptor open but does NOT load vectors into RAM.
 _index_ids: list[int] = []
+_index_mmap: np.ndarray | None = None   # memmap, shape (N, 512), float32
 _index_lock = asyncio.Lock()
 
 
@@ -83,7 +95,6 @@ async def run_batch_embedding(force: bool = False) -> dict:
             embedded += 1
         else:
             failed += 1
-        # throttle: 0.1s between photos so NAS stays responsive
         await asyncio.sleep(0.1)
 
     await _rebuild_index()
@@ -126,11 +137,17 @@ async def get_status() -> dict:
     }
 
 
-# ── Internal: index ────────────────────────────────────────────────────────────
+# ── Internal: disk-mmap index ──────────────────────────────────────────────────
 
 async def _rebuild_index() -> None:
-    """Load all stored embeddings into a numpy matrix for fast cosine search."""
-    global _index_matrix, _index_ids
+    """
+    Rebuild the disk-based mmap index from DB embeddings.
+
+    Memory footprint: O(1) — vectors are written to disk, not stacked in RAM.
+    The resulting .npy files are opened with mode='r' (read-only mmap), so the
+    OS can page individual rows in/out as needed during search.
+    """
+    global _index_ids, _index_mmap
     async with _index_lock:
         async with AsyncSessionLocal() as session:
             rows = (await session.execute(
@@ -140,48 +157,86 @@ async def _rebuild_index() -> None:
             )).all()
 
         if not rows:
-            _index_matrix = None
-            _index_ids = []
+            _index_ids  = []
+            _index_mmap = None
             return
 
+        _INDEX_DIR.mkdir(parents=True, exist_ok=True)
+
         ids  = []
-        vecs = []
+        # Write vectors row-by-row into a memory-mapped file — no np.stack()
+        n = len(rows)
+        vecs_mmap = np.lib.format.open_memmap(
+            str(_VECS_PATH), mode="w+", dtype=np.float32, shape=(n, _DIMS)
+        )
+        i = 0
         for photo_id, blob in rows:
             try:
                 vec = _blob_to_vec(blob)
+                vecs_mmap[i] = vec
                 ids.append(photo_id)
-                vecs.append(vec)
+                i += 1
             except Exception:
                 pass
 
-        _index_ids    = ids
-        _index_matrix = np.stack(vecs, axis=0).astype(np.float32)   # (N, 512)
-        logger.info("CLIP index rebuilt: %d vectors", len(ids))
+        # Trim to actual count (skip failed rows)
+        if i < n:
+            # Re-open with correct shape
+            vecs_mmap.flush()
+            del vecs_mmap
+            final_mmap = np.lib.format.open_memmap(
+                str(_VECS_PATH), mode="r+", dtype=np.float32, shape=(i, _DIMS)
+            )
+            np.lib.format.open_memmap(
+                str(_VECS_PATH), mode="w+", dtype=np.float32, shape=(i, _DIMS)
+            )[:] = final_mmap[:i]
+            del final_mmap
+
+        np.save(str(_IDS_PATH), np.array(ids, dtype=np.int64))
+
+        # Open read-only mmap for queries — OS pages it lazily, RAM usage ≈ 0
+        _index_mmap = np.load(str(_VECS_PATH), mmap_mode="r")
+        _index_ids  = ids
+        logger.info("CLIP mmap index rebuilt: %d vectors → %s", len(ids), _VECS_PATH)
+
+
+def _load_index_from_disk() -> bool:
+    """Try to load a previously built mmap index. Returns True if successful."""
+    global _index_ids, _index_mmap
+    if not _IDS_PATH.exists() or not _VECS_PATH.exists():
+        return False
+    try:
+        ids_arr = np.load(str(_IDS_PATH))
+        _index_ids  = ids_arr.tolist()
+        _index_mmap = np.load(str(_VECS_PATH), mmap_mode="r")
+        logger.info("CLIP mmap index loaded from disk: %d vectors", len(_index_ids))
+        return True
+    except Exception as exc:
+        logger.warning("Failed to load CLIP mmap index: %s", exc)
+        return False
 
 
 async def _vector_search(query_emb: np.ndarray, top_k: int) -> list[dict]:
-    """Cosine similarity search in the in-memory index."""
-    global _index_matrix, _index_ids
+    """Cosine similarity search using mmap index — minimal RAM usage."""
+    global _index_mmap, _index_ids
 
-    if _index_matrix is None:
-        await _rebuild_index()
+    if _index_mmap is None:
+        # Try loading from disk first (survives container restarts)
+        if not _load_index_from_disk():
+            await _rebuild_index()
 
-    if _index_matrix is None or len(_index_ids) == 0:
+    if _index_mmap is None or len(_index_ids) == 0:
         return []
 
-    sims = (_index_matrix @ query_emb).flatten()             # (N,)
+    # Matrix multiply: (N, 512) @ (512,) → (N,)
+    # numpy reads only the accessed rows from the mmap file via OS page cache
+    sims = (_index_mmap @ query_emb).flatten()
     top  = min(top_k, len(_index_ids))
     idxs = np.argpartition(sims, -top)[-top:]
-    idxs = idxs[np.argsort(sims[idxs])[::-1]]               # sort desc
+    idxs = idxs[np.argsort(sims[idxs])[::-1]]   # sort desc
 
-    results = []
-    for i in idxs:
-        results.append({
-            "photo_id": _index_ids[i],
-            "score":    float(sims[i]),
-        })
+    results = [{"photo_id": _index_ids[i], "score": float(sims[i])} for i in idxs]
 
-    # Fetch full photo info
     photo_ids = [r["photo_id"] for r in results]
     score_map = {r["photo_id"]: r["score"] for r in results}
     async with AsyncSessionLocal() as session:
@@ -208,7 +263,6 @@ async def _vector_search(query_emb: np.ndarray, top_k: int) -> list[dict]:
 # ── Serialisation helpers ──────────────────────────────────────────────────────
 
 def _vec_to_blob(v: np.ndarray) -> bytes:
-    """Pack float32 array to raw bytes."""
     return struct.pack(f"{len(v)}f", *v.tolist())
 
 

@@ -2,7 +2,10 @@
 Album service — CRUD, photo association, and trash management.
 """
 import errno
+import logging
 import shutil
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -227,17 +230,33 @@ async def restore_photo(db: AsyncSession, photo: Photo) -> Photo:
 
 
 async def hard_delete_photo(db: AsyncSession, photo: Photo) -> None:
-    """Permanently remove photo from DB and disk."""
+    """Permanently remove photo from DB, disk, and all cached thumbnails."""
     src_name = f"{photo.id}_{Path(photo.file_path).name}"
     trash = _trash_dir(photo.file_path)
     trashed = trash / src_name
 
-    # Remove from trash dir if present
+    # 1. Remove original file (from trash dir or original location)
     for p in [trashed, Path(photo.file_path)]:
         try:
             p.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("Could not delete file %s: %s", p, exc)
+
+    # 2. Remove cached thumbnails stored in DB columns
+    for thumb_path in [photo.thumbnail_256, photo.thumbnail_1080]:
+        if thumb_path:
+            try:
+                Path(thumb_path).unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("Could not delete thumbnail %s: %s", thumb_path, exc)
+
+    # 3. Remove XMP sidecar if present alongside original
+    xmp = Path(photo.file_path).with_suffix(".xmp")
+    if xmp.exists():
+        try:
+            xmp.unlink()
+        except OSError as exc:
+            logger.warning("Could not delete XMP sidecar %s: %s", xmp, exc)
 
     await db.delete(photo)
     await db.commit()
