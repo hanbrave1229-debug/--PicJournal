@@ -81,4 +81,6 @@ export interface PhotoListParams {
   date_from?: string
   /** Filter: only photos taken on or before this date (YYYY-MM-DD) */
   date_to?: string
+  /** Filter by media type: 'photo' | 'video' | undefined (all) */
+  media_type?: 'photo' | 'video'
 }

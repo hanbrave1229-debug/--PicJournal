@@ -36,6 +36,22 @@
         </el-button-group>
 
         <el-checkbox v-model="filter.only_duplicates" label="仅重复" size="small" />
+
+        <!-- Media type filter -->
+        <el-button-group size="small">
+          <el-button
+            :type="!filter.media_type ? 'primary' : ''"
+            @click="filter.media_type = undefined"
+          >全部</el-button>
+          <el-button
+            :type="filter.media_type === 'photo' ? 'primary' : ''"
+            @click="filter.media_type = 'photo'"
+          >📷 照片</el-button>
+          <el-button
+            :type="filter.media_type === 'video' ? 'primary' : ''"
+            @click="filter.media_type = 'video'"
+          >▶ 视频</el-button>
+        </el-button-group>
       </div>
 
       <div class="gl-toolbar-right">

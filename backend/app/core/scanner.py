@@ -285,6 +285,55 @@ async def _upsert_photos(
         await session.commit()
 
 
+# ── Video thumbnail pregeneration ────────────────────────────────────────────
+
+async def _pregen_video_thumbnails(db_session_factory) -> None:
+    """
+    After a scan, iterate all video Photos that have no thumbnail and
+    generate them via FFmpeg. Runs as an asyncio task; failures are silent.
+    """
+    import tempfile
+    from sqlalchemy import select
+    from app.models.photo import Photo
+    from app.core.video_processor import extract_video_frame, ffmpeg_available
+    from app.core.thumbnail_gen import generate_thumbnails
+
+    if not ffmpeg_available():
+        return
+
+    try:
+        async with db_session_factory() as session:
+            result = await session.execute(
+                select(Photo).where(
+                    Photo.media_type == "video",
+                    Photo.is_deleted.is_(False),
+                    Photo.thumbnail_256.is_(None),
+                )
+            )
+            videos = result.scalars().all()
+
+        for video in videos:
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                    frame_path = tmp.name
+                ok = await extract_video_frame(video.file_path, frame_path)
+                if not ok:
+                    continue
+                results = await generate_thumbnails(frame_path, video.id)
+                async with db_session_factory() as session:
+                    photo = await session.get(Photo, video.id)
+                    if photo:
+                        if results.get(256):
+                            photo.thumbnail_256 = results[256]
+                        if results.get(1080):
+                            photo.thumbnail_1080 = results[1080]
+                        await session.commit()
+            except Exception:
+                pass  # Non-fatal per video
+    except Exception:
+        pass
+
+
 # ── Main scan coroutine ───────────────────────────────────────────────────────
 
 BATCH_SIZE = 50  # Photos committed to DB per batch
@@ -386,6 +435,9 @@ async def run_scan(
             task_id,
             {"event": "completed", "processed": processed, "total": total},
         )
+
+        # ── Post-scan: pregenerate video thumbnails in background ─────────────
+        asyncio.create_task(_pregen_video_thumbnails(db_session_factory))
 
     except Exception as exc:
         await _update_task(

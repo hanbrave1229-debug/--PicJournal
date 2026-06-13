@@ -519,7 +519,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowDown, CircleCloseFilled, Connection, Folder, FolderOpened,
@@ -729,6 +729,12 @@ const scanning = ref(false)
 onMounted(() => {
   scanStore.fetchTasks()
   loadAiConfigs()
+  // Restore progress if a tagging task was running before page reload
+  pollTagStatus().then(() => {
+    if (tagRunning.value && !tagPollTimer) {
+      tagPollTimer = setInterval(pollTagStatus, 1500)
+    }
+  })
 })
 
 async function startScan() {
@@ -839,6 +845,13 @@ async function saveAiConfig() {
 }
 
 onMounted(loadAiConfig)
+
+onUnmounted(() => {
+  if (tagPollTimer) {
+    clearInterval(tagPollTimer)
+    tagPollTimer = null
+  }
+})
 
 // ── AI Batch Tagging ──────────────────────────────────────────────────────────
 

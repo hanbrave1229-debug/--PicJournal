@@ -24,6 +24,7 @@ async def list_photos(
     min_sharpness: float | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    media_type: str | None = None,  # "photo" | "video" | None (all)
 ) -> tuple[list[Photo], int]:
     """
     Return (photos, total_count) for the given page/filter.
@@ -57,6 +58,9 @@ async def list_photos(
     if date_to is not None:
         # Include the full last day
         stmt = stmt.where(Photo.taken_at <= date_to + "T23:59:59")
+
+    if media_type in ("photo", "video"):
+        stmt = stmt.where(Photo.media_type == media_type)
 
     # Total count
     count_stmt = select(func.count()).select_from(stmt.subquery())

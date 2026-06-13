@@ -51,11 +51,26 @@
 
     <!-- ── Empty state ───────────────────────────────────────────────────── -->
     <div v-else-if="!personStore.loading && !visiblePersons.length" class="pp-empty">
-      <div class="pp-empty-icon">👤</div>
-      <p class="pp-empty-text">尚未识别到人物</p>
-      <p class="pp-empty-sub">点击「识别人脸」开始分析照片库</p>
-      <el-button type="primary" @click="runAnalysis" :loading="personStore.running">
-        开始识别
+      <svg class="pp-empty-svg" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="56" fill="var(--no-bg-card)" stroke="var(--no-border-low)" stroke-width="2"/>
+        <!-- Person silhouette -->
+        <circle cx="60" cy="44" r="14" fill="var(--no-border-low)"/>
+        <path d="M30 90c0-16.569 13.431-30 30-30s30 13.431 30 30" fill="var(--no-border-low)"/>
+        <!-- Scan lines overlay -->
+        <rect x="20" y="26" width="80" height="68" rx="6" stroke="var(--no-accent)" stroke-width="1.5" stroke-dasharray="4 3" fill="none" opacity="0.5"/>
+        <line x1="20" y1="60" x2="100" y2="60" stroke="var(--no-accent)" stroke-width="1" opacity="0.4" stroke-dasharray="2 4"/>
+      </svg>
+      <p class="pp-empty-text">还没有识别到任何人物</p>
+      <p class="pp-empty-sub">拾光手账会自动识别照片中的面孔，并将同一人的照片归到一起。<br>点击下方按钮开始分析你的照片库。</p>
+      <div class="pp-empty-steps">
+        <div class="pp-empty-step"><span class="pp-step-num">1</span>扫描照片库</div>
+        <div class="pp-empty-arrow">→</div>
+        <div class="pp-empty-step"><span class="pp-step-num">2</span>检测面孔</div>
+        <div class="pp-empty-arrow">→</div>
+        <div class="pp-empty-step"><span class="pp-step-num">3</span>自动归类</div>
+      </div>
+      <el-button type="primary" size="large" @click="runAnalysis" :loading="personStore.running" style="margin-top:8px">
+        开始人脸识别
       </el-button>
     </div>
 
@@ -552,11 +567,38 @@ onMounted(() => personStore.fetchPersons(false))
 // ── Empty ─────────────────────────────────────────────────────────────────
 .pp-empty {
   display: flex; flex-direction: column; align-items: center;
-  padding: 80px 20px; gap: 10px; text-align: center;
+  padding: 60px 20px 80px; gap: 14px; text-align: center;
 }
-.pp-empty-icon { font-size: 52px; }
-.pp-empty-text { font-size: 17px; font-weight: 600; margin: 0; }
-.pp-empty-sub  { font-size: 13px; color: var(--no-text-muted); margin: 0; }
+.pp-empty-svg {
+  width: 120px; height: 120px;
+  margin-bottom: 4px;
+}
+.pp-empty-text { font-size: 18px; font-weight: 600; margin: 0; }
+.pp-empty-sub  {
+  font-size: 13px; color: var(--no-text-muted); margin: 0;
+  max-width: 340px; line-height: 1.7;
+}
+.pp-empty-steps {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 4px;
+}
+.pp-empty-step {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--no-text-secondary);
+  background: var(--no-bg-card);
+  border: 1px solid var(--no-border-low);
+  border-radius: 20px;
+  padding: 4px 12px;
+}
+.pp-step-num {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--no-accent);
+  color: var(--no-bg-main);
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.pp-empty-arrow { color: var(--no-text-disabled); font-size: 14px; }
 
 // ── Face strip ────────────────────────────────────────────────────────────
 .pp-face-strip {
