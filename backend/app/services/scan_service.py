@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import scanner, ai_tagger
+from app.services import scoring_service
 from app.db.database import AsyncSessionLocal
 from app.models.scan_task import ScanStatus, ScanTask
 from app.models.photo import Photo
@@ -93,6 +94,17 @@ async def _scan_then_auto_tag(task_id: int, scan_path: str) -> None:
         await _run_geocoding()
     except Exception:
         logger.exception("geocoding: pipeline error")
+
+    # Step 2b: quality scoring — score any photos missing sharpness/exposure scores
+    try:
+        progress = await scoring_service.run_scoring(scan_task_id=task_id, force=False)
+        if progress.total > 0:
+            logger.info(
+                "scoring: scored %d photos (%.1f%% complete)",
+                progress.processed, progress.pct,
+            )
+    except Exception:
+        logger.exception("scoring: post-scan scoring error")
 
     # Step 3: check whether auto-tag is on
     try:

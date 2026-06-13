@@ -55,6 +55,16 @@ async def get_status() -> FaceRunStatus:
 
 # ── Person CRUD ───────────────────────────────────────────────────────────────
 
+@router.post("/rebuild-covers", summary="Backfill cover_path for persons missing one")
+async def rebuild_covers() -> dict:
+    """
+    One-time fix: scan all Person rows with cover_path=NULL and populate from
+    their first FaceCrop that has a saved crop image file.
+    Safe to call repeatedly (idempotent).
+    """
+    return await face_service.rebuild_covers()
+
+
 @router.get("", response_model=list[PersonResponse], summary="List all persons")
 async def list_persons(
     include_hidden: bool = Query(False),
@@ -100,6 +110,36 @@ async def hide_person(
         if p["id"] == person_id:
             return PersonResponse(**p)
     raise HTTPException(status_code=404, detail="Person not found")
+
+
+@router.patch("/{person_id}/lock", response_model=PersonResponse, summary="Lock / unlock a person")
+async def lock_person(
+    person_id: int,
+    locked: bool = Query(True),
+) -> PersonResponse:
+    person = await face_service.lock_person(person_id, locked=locked)
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    persons = await face_service.list_persons(include_hidden=True)
+    for p in persons:
+        if p["id"] == person_id:
+            return PersonResponse(**p)
+    raise HTTPException(status_code=404, detail="Person not found")
+
+
+@router.delete("/{person_id}", status_code=204, summary="Delete a person (keep photos)")
+async def delete_person(person_id: int) -> None:
+    """
+    Delete the person and all their face recognition data.
+    The underlying photos are NOT deleted.
+    Returns 423 if the person is locked.
+    """
+    try:
+        found = await face_service.delete_person(person_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
+    if not found:
+        raise HTTPException(status_code=404, detail="Person not found")
 
 
 @router.post("/merge", response_model=dict, summary="Merge two persons")

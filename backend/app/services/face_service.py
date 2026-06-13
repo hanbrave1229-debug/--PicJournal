@@ -18,7 +18,7 @@ import logging
 import time
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.config import get_settings
 from app.core.face_engine import (
@@ -281,23 +281,30 @@ async def _pipeline(force: bool) -> FaceRunResponse:
 
         await session.commit()
 
-    # ── 7. Update Person.cover_path for newly created persons ─────────────────
+    # ── 7. Backfill cover_path for ALL persons missing one (not just current run) ─
+    #
+    # Previous bug: only persons in label_to_person_id (created THIS run) were
+    # covered. Persons from prior runs with cover_path=NULL never got one set.
+    # Fix: query ALL Person rows where cover_path IS NULL and fill from FaceCrop.
     async with AsyncSessionLocal() as session:
-        for label, pid in label_to_person_id.items():
+        uncovered_persons = (
+            await session.execute(
+                select(Person).where(Person.cover_path.is_(None))
+            )
+        ).scalars().all()
+
+        for person in uncovered_persons:
             first_crop = (
                 await session.execute(
                     select(FaceCrop)
-                    .where(FaceCrop.person_id == pid)
+                    .where(FaceCrop.person_id == person.id)
                     .where(FaceCrop.crop_path.isnot(None))
                     .limit(1)
                 )
             ).scalar_one_or_none()
-
             if first_crop:
-                person = await session.get(Person, pid)
-                if person and not person.cover_path:
-                    person.cover_path = first_crop.crop_path
-                    persons_created_final += 1
+                person.cover_path = first_crop.crop_path
+                persons_created_final += 1
 
         await session.commit()
 
@@ -313,37 +320,89 @@ async def _pipeline(force: bool) -> FaceRunResponse:
 # ── Query helpers ─────────────────────────────────────────────────────────────
 
 async def list_persons(include_hidden: bool = False) -> list[dict]:
-    """Return all persons with photo counts."""
+    """
+    Return all persons with photo counts.
+
+    Uses a single LEFT JOIN + GROUP BY instead of N+1 individual count queries,
+    which is critical when there are hundreds of persons.
+    """
     async with AsyncSessionLocal() as session:
-        persons = (
-            await session.execute(
-                select(Person)
-                .where(Person.is_hidden.is_(include_hidden) if not include_hidden else True)
-                .order_by(Person.name)
+        # Subquery: distinct photo count per person
+        photo_count_sq = (
+            select(
+                FaceCrop.person_id,
+                func.count(FaceCrop.photo_id.distinct()).label("photo_count"),
             )
-        ).scalars().all()
+            .group_by(FaceCrop.person_id)
+            .subquery()
+        )
 
-        result = []
-        for p in persons:
-            # Count distinct photos for this person
-            count_result = await session.execute(
-                select(FaceCrop.photo_id)
-                .where(FaceCrop.person_id == p.id)
-                .distinct()
+        stmt = (
+            select(
+                Person,
+                func.coalesce(photo_count_sq.c.photo_count, 0).label("photo_count"),
             )
-            photo_count = len(count_result.all())
+            .outerjoin(photo_count_sq, Person.id == photo_count_sq.c.person_id)
+            .order_by(Person.name)
+        )
 
-            result.append({
+        if not include_hidden:
+            stmt = stmt.where(Person.is_hidden.is_(False))
+
+        rows = (await session.execute(stmt)).all()
+
+        return [
+            {
                 "id": p.id,
                 "name": p.name,
                 "cover_path": p.cover_path,
                 "is_hidden": p.is_hidden,
+                "is_locked": p.is_locked,
                 "photo_count": photo_count,
                 "created_at": p.created_at,
                 "updated_at": p.updated_at,
-            })
+            }
+            for p, photo_count in rows
+        ]
 
-        return result
+
+async def rebuild_covers() -> dict:
+    """
+    One-time backfill: for every Person with cover_path=NULL that has at least
+    one FaceCrop with a saved crop image, set cover_path to that crop.
+
+    Safe to call multiple times (idempotent — only touches NULL rows).
+    Returns counts of persons updated and persons still missing a cover.
+    """
+    updated = 0
+    still_missing = 0
+
+    async with AsyncSessionLocal() as session:
+        uncovered = (
+            await session.execute(
+                select(Person).where(Person.cover_path.is_(None))
+            )
+        ).scalars().all()
+
+        for person in uncovered:
+            first_crop = (
+                await session.execute(
+                    select(FaceCrop)
+                    .where(FaceCrop.person_id == person.id)
+                    .where(FaceCrop.crop_path.isnot(None))
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if first_crop:
+                person.cover_path = first_crop.crop_path
+                updated += 1
+            else:
+                still_missing += 1
+
+        await session.commit()
+
+    logger.info("rebuild_covers: updated=%d still_missing=%d", updated, still_missing)
+    return {"updated": updated, "still_missing": still_missing}
 
 
 async def get_person_photos(person_id: int, page: int = 1, page_size: int = 80) -> dict:
@@ -415,3 +474,32 @@ async def hide_person(person_id: int, hidden: bool = True) -> Person | None:
         await session.commit()
         await session.refresh(person)
         return person
+
+
+async def lock_person(person_id: int, locked: bool = True) -> Person | None:
+    """Lock or unlock a person (locked persons cannot be deleted)."""
+    async with AsyncSessionLocal() as session:
+        person = await session.get(Person, person_id)
+        if not person:
+            return None
+        person.is_locked = locked
+        await session.commit()
+        await session.refresh(person)
+        return person
+
+
+async def delete_person(person_id: int) -> bool:
+    """
+    Delete a person and all their FaceCrop records.
+    The underlying photos are NOT deleted — only the face recognition data.
+    Raises ValueError if the person is locked.
+    """
+    async with AsyncSessionLocal() as session:
+        person = await session.get(Person, person_id)
+        if not person:
+            return False
+        if person.is_locked:
+            raise ValueError(f"Person {person_id} is locked and cannot be deleted")
+        await session.delete(person)   # CASCADE deletes FaceCrop rows
+        await session.commit()
+    return True

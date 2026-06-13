@@ -75,6 +75,14 @@ async def _run_migrations(conn) -> None:
             text("ALTER TABLE diaries ADD COLUMN cover_photo_id INTEGER REFERENCES photos(id)")
         )
 
+    # persons.is_locked — added to protect named persons from accidental deletion
+    existing_p = await conn.execute(text("PRAGMA table_info(persons)"))
+    person_cols = {row[1] for row in existing_p.fetchall()}
+    if "is_locked" not in person_cols:
+        await conn.execute(
+            text("ALTER TABLE persons ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT 0")
+        )
+
     # Face embedding dimension migration: face_recognition was 128-dim, insightface is 512-dim.
     # Clear incompatible legacy face data so the next /persons/run starts clean.
     try:

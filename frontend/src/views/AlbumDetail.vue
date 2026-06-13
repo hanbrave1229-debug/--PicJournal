@@ -59,6 +59,15 @@
         <button class="ad-remove-btn" @click.stop="removeSingle(photo.id)">
           <el-icon><Remove /></el-icon>
         </button>
+        <!-- Set as cover button on hover -->
+        <button
+          class="ad-cover-btn"
+          :class="{ 'is-current-cover': albumStore.currentAlbum?.cover_photo_id === photo.id }"
+          :title="albumStore.currentAlbum?.cover_photo_id === photo.id ? '当前封面' : '设为封面'"
+          @click.stop="setCover(photo.id)"
+        >
+          <el-icon><Picture /></el-icon>
+        </button>
       </div>
     </div>
 
@@ -87,7 +96,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Loading, PictureFilled, Remove, Select } from '@element-plus/icons-vue'
+import { ArrowLeft, Loading, Picture, PictureFilled, Remove, Select } from '@element-plus/icons-vue'
 import { useAlbumStore } from '@/stores/useAlbumStore'
 import ImageViewer from '@/components/gallery/ImageViewer.vue'
 import type { Photo } from '@/types/photo'
@@ -128,6 +137,20 @@ function navigateViewer(delta: number) {
 }
 
 // ── Remove ─────────────────────────────────────────────────────────────────────
+/** Set a photo as the album cover. */
+async function setCover(photoId: number) {
+  if (!albumStore.currentAlbum) return
+  const isCurrent = albumStore.currentAlbum.cover_photo_id === photoId
+  try {
+    await albumStore.updateAlbum(albumId.value, {
+      cover_photo_id: isCurrent ? null : photoId,
+    })
+    ElMessage.success(isCurrent ? '已取消封面' : '已设为封面')
+  } catch {
+    ElMessage.error('操作失败')
+  }
+}
+
 async function removeSingle(photoId: number) {
   await albumStore.removePhotosFromAlbum(albumId.value, [photoId])
   selectedIds.value.delete(photoId)
@@ -338,6 +361,37 @@ onUnmounted(() => {
   font-size: 14px;
 
   &:hover { background: rgba(248, 113, 113, 0.75); }
+}
+
+// ── Set cover button ──────────────────────────────────────────────────────────
+.ad-cover-btn {
+  position: absolute;
+  top: 6px; left: 6px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  font-size: 14px;
+
+  &:hover { background: rgba(52, 211, 153, 0.75); }
+
+  &.is-current-cover {
+    opacity: 1;
+    background: rgba(52, 211, 153, 0.85);
+    color: var(--no-bg-main);
+  }
+}
+
+// Show cover btn on hover (alongside remove btn)
+.ad-cell:hover .ad-cover-btn:not(.is-current-cover) {
+  opacity: 1;
 }
 
 // ── Load more sentinel ────────────────────────────────────────────────────────

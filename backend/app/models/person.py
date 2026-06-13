@@ -27,6 +27,9 @@ class Person(Base):
     # Whether this person was hidden/merged by the user
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Locked persons cannot be deleted (prevents accidental removal of named people)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

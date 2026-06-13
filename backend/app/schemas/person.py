@@ -15,6 +15,7 @@ class PersonResponse(BaseModel):
     name: str
     cover_path: str | None
     is_hidden: bool
+    is_locked: bool
     photo_count: int   # injected by service layer, not from ORM directly
     created_at: datetime
     updated_at: datetime

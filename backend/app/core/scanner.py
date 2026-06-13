@@ -68,6 +68,7 @@ class FileInfo(NamedTuple):
     gps_lat: float | None
     gps_lon: float | None
     thumbhash: str | None  # Dominant color as "#RRGGBB" for progressive placeholder
+    sharpness_score: float | None  # Laplacian variance — higher = sharper
 
 
 def _process_file(file_path: str) -> FileInfo | None:
@@ -85,6 +86,7 @@ def _process_file(file_path: str) -> FileInfo | None:
         stat = path.stat()
 
         # Load image to get dimensions + dominant color for ThumbHash placeholder
+        sharpness_score: float | None = None
         with Image.open(path) as img:
             width, height = img.size
             # Compute dominant color: resize to 1×1 → #RRGGBB
@@ -95,6 +97,31 @@ def _process_file(file_path: str) -> FileInfo | None:
                 thumbhash: str | None = f"#{r:02x}{g:02x}{b:02x}"
             except Exception:
                 thumbhash = None
+
+            # Laplacian sharpness: variance of the Laplacian on a downsampled
+            # grayscale — fast enough (target ≤256px), no cv2 required.
+            try:
+                import numpy as np
+                gray = img.convert("L")
+                # Downsample to max 256px on longest side for speed
+                scale = min(256 / max(width, height), 1.0)
+                if scale < 1.0:
+                    gray = gray.resize(
+                        (max(1, int(width * scale)), max(1, int(height * scale))),
+                        Image.BILINEAR,
+                    )
+                arr = np.array(gray, dtype=np.float32)
+                # Laplacian kernel convolution via numpy (avoids cv2 dependency)
+                lap = (
+                    arr[:-2, 1:-1]
+                    + arr[2:, 1:-1]
+                    + arr[1:-1, :-2]
+                    + arr[1:-1, 2:]
+                    - 4 * arr[1:-1, 1:-1]
+                )
+                sharpness_score = float(lap.var())
+            except Exception:
+                sharpness_score = None
 
         exif: ExifData = extract_exif(path)
 
@@ -114,6 +141,7 @@ def _process_file(file_path: str) -> FileInfo | None:
             gps_lat=exif.gps_lat,
             gps_lon=exif.gps_lon,
             thumbhash=thumbhash,
+            sharpness_score=sharpness_score,
         )
     except Exception:
         return None
@@ -189,6 +217,10 @@ async def _upsert_photos(
             # Only write thumbhash when not yet computed (preserve any future upgrades)
             if photo.thumbhash is None and info.thumbhash is not None:
                 photo.thumbhash = info.thumbhash
+            # Sharpness quick estimate: only write if not yet scored by the
+            # dedicated scoring pipeline (which uses cv2 and is more accurate).
+            if photo.sharpness_score is None and info.sharpness_score is not None:
+                photo.sharpness_score = info.sharpness_score
 
             session.add(photo)
 

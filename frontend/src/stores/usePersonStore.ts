@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { personsApi } from '@/api/persons'
-import type { Person, FaceRunResponse, FaceRunStatus } from '@/types/person'
+import type { Person, FaceRunResponse } from '@/types/person'
+import type { Photo } from '@/types/photo'
 
 export const usePersonStore = defineStore('person', () => {
   const persons = ref<Person[]>([])
@@ -9,10 +10,16 @@ export const usePersonStore = defineStore('person', () => {
   const running = ref(false)
   const lastRunResult = ref<FaceRunResponse | null>(null)
 
+  // Active person whose photos are displayed below the strip
+  const activePerson = ref<Person | null>(null)
+  const activePhotos = ref<Photo[]>([])
+  const activePhotosTotal = ref(0)
+  const loadingPhotos = ref(false)
+
   /** Total non-hidden persons */
   const total = computed(() => persons.value.filter((p) => !p.is_hidden).length)
 
-  // ── Fetch persons ──────────────────────────────────────────────────────────
+  // Fetch persons
   async function fetchPersons(includeHidden = false) {
     loading.value = true
     try {
@@ -23,7 +30,7 @@ export const usePersonStore = defineStore('person', () => {
     }
   }
 
-  // ── Run face analysis ──────────────────────────────────────────────────────
+  // Run face analysis
   async function runAnalysis(force = false): Promise<FaceRunResponse> {
     running.value = true
     try {
@@ -36,24 +43,65 @@ export const usePersonStore = defineStore('person', () => {
     }
   }
 
-  // ── Rename ─────────────────────────────────────────────────────────────────
+  // Select active person -> load their photos
+  async function selectPerson(person: Person) {
+    if (activePerson.value?.id === person.id) return
+    activePerson.value = person
+    activePhotos.value = []
+    activePhotosTotal.value = 0
+    loadingPhotos.value = true
+    try {
+      const { data } = await personsApi.photos(person.id, 1, 80)
+      activePhotos.value = data.items
+      activePhotosTotal.value = data.total
+    } finally {
+      loadingPhotos.value = false
+    }
+  }
+
+  // Rename
   async function renamePerson(id: number, name: string) {
     const { data } = await personsApi.rename(id, name)
-    const idx = persons.value.findIndex((p) => p.id === id)
-    if (idx !== -1) persons.value[idx] = data
+    _patchLocal(data)
+    if (activePerson.value?.id === id) activePerson.value = data
   }
 
-  // ── Hide ───────────────────────────────────────────────────────────────────
+  // Hide
   async function hidePerson(id: number, hidden: boolean) {
     const { data } = await personsApi.hide(id, hidden)
-    const idx = persons.value.findIndex((p) => p.id === id)
-    if (idx !== -1) persons.value[idx] = data
+    _patchLocal(data)
   }
 
-  // ── Merge ──────────────────────────────────────────────────────────────────
+  // Lock
+  async function lockPerson(id: number, locked: boolean) {
+    const { data } = await personsApi.lock(id, locked)
+    _patchLocal(data)
+  }
+
+  // Delete person (keep photos)
+  async function deletePerson(id: number) {
+    await personsApi.deletePerson(id)
+    persons.value = persons.value.filter((p) => p.id !== id)
+    if (activePerson.value?.id === id) {
+      activePerson.value = null
+      activePhotos.value = []
+      activePhotosTotal.value = 0
+    }
+  }
+
+  // Merge persons
   async function mergePersons(sourceId: number, targetId: number) {
     await personsApi.merge(sourceId, targetId)
     await fetchPersons()
+    if (activePerson.value?.id === sourceId) {
+      const target = persons.value.find((p) => p.id === targetId) ?? null
+      if (target) await selectPerson(target)
+    }
+  }
+
+  function _patchLocal(updated: Person) {
+    const idx = persons.value.findIndex((p) => p.id === updated.id)
+    if (idx !== -1) persons.value[idx] = updated
   }
 
   return {
@@ -61,11 +109,18 @@ export const usePersonStore = defineStore('person', () => {
     loading,
     running,
     lastRunResult,
+    activePerson,
+    activePhotos,
+    activePhotosTotal,
+    loadingPhotos,
     total,
     fetchPersons,
     runAnalysis,
+    selectPerson,
     renamePerson,
     hidePerson,
+    lockPerson,
+    deletePerson,
     mergePersons,
   }
 })

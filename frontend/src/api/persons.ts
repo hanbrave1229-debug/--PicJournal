@@ -35,7 +35,17 @@ export const personsApi = {
     return axios.patch(`${BASE}/${id}/hide`, null, { params: { hidden } })
   },
 
-  /** Merge source into target */
+  /** Lock or unlock a person (locked = cannot be deleted) */
+  lock(id: number, locked: boolean): Promise<{ data: Person }> {
+    return axios.patch(`${BASE}/${id}/lock`, null, { params: { locked } })
+  },
+
+  /** Delete a person and their face data (photos are kept). Returns 423 if locked. */
+  deletePerson(id: number): Promise<void> {
+    return axios.delete(`${BASE}/${id}`)
+  },
+
+  /** Merge source into target (source is deleted, faces reassigned to target) */
   merge(sourceId: number, targetId: number): Promise<{ data: { ok: boolean; message: string } }> {
     return axios.post(`${BASE}/merge`, { source_id: sourceId, target_id: targetId })
   },
@@ -45,7 +55,12 @@ export const personsApi = {
     return axios.get(`${BASE}/${id}/photos`, { params: { page, page_size: pageSize } })
   },
 
-  /** Build URL for a face crop image by filename */
+  /** One-time backfill: populate cover_path for persons that are missing one */
+  rebuildCovers(): Promise<{ data: { updated: number; still_missing: number } }> {
+    return axios.post(`${BASE}/rebuild-covers`)
+  },
+
+  /** Build URL for a face crop image by filesystem path */
   cropUrl(coverPath: string | null): string {
     if (!coverPath) return ''
     const filename = coverPath.split('/').pop() ?? ''

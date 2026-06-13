@@ -1,5 +1,3 @@
-import type { Photo } from './photo'
-
 /** A unique person identified by face clustering */
 export interface Person {
   id: number
@@ -7,6 +5,8 @@ export interface Person {
   /** Path to representative face crop served at /api/v1/persons/crops/{filename} */
   cover_path: string | null
   is_hidden: boolean
+  /** Locked persons cannot be deleted */
+  is_locked: boolean
   photo_count: number
   created_at: string
   updated_at: string
