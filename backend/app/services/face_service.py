@@ -123,12 +123,8 @@ async def _pipeline(force: bool) -> FaceRunResponse:
         stmt = select(Photo.id, Photo.file_path).where(Photo.is_deleted.is_(False))
 
         if not force:
-            # Skip photos that already have face crops
-            existing_photo_ids = (
-                await session.execute(select(FaceCrop.photo_id).distinct())
-            ).scalars().all()
-            if existing_photo_ids:
-                stmt = stmt.where(Photo.id.not_in(existing_photo_ids))
+            # Skip photos already face-analyzed (true checkpoint — works even if no faces found)
+            stmt = stmt.where(Photo.face_analyzed_at.is_(None))
 
         rows = (await session.execute(stmt)).all()
 
@@ -158,6 +154,14 @@ async def _pipeline(force: bool) -> FaceRunResponse:
             _face_executor, _detect_with_throttle, row.id, row.file_path
         )
         all_faces.extend(faces)
+
+        # 每检测完一张立即写入 face_analyzed_at — 断点续传的核心：重启后跳过已检测的照片
+        async with AsyncSessionLocal() as session:
+            photo = await session.get(Photo, row.id)
+            if photo:
+                photo.face_analyzed_at = func.now()
+                await session.commit()
+
         # 每 5 张让出一次事件循环，保持其他 API 请求响应性
         if i % 5 == 0:
             await asyncio.sleep(0)
@@ -558,10 +562,14 @@ async def get_person_by_id(person_id: int) -> dict | None:
 
 
 async def reset_face_data() -> dict:
-    """Delete ALL face recognition data (FaceCrop + Person rows). Idempotent."""
+    """Delete ALL face recognition data (FaceCrop + Person rows) and clear face_analyzed_at checkpoints."""
     async with AsyncSessionLocal() as session:
         crop_result = await session.execute(delete(FaceCrop))
         person_result = await session.execute(delete(Person))
+        # Clear checkpoints so next /run re-processes all photos from scratch
+        await session.execute(
+            Photo.__table__.update().values(face_analyzed_at=None)
+        )
         await session.commit()
     return {
         "crops_deleted": crop_result.rowcount,

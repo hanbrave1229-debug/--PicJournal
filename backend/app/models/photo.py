@@ -86,6 +86,10 @@ class Photo(Base):
     vision_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     """Set after successful VLM analysis. NULL = not yet processed; used for resume."""
 
+    # ── Face detection checkpoint ─────────────────────────────────────────────
+    face_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    """Set after face detection completes (even if no faces found). NULL = not yet processed."""
+
     # ── Soft delete ───────────────────────────────────────────────────────────
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
