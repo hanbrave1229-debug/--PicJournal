@@ -6,7 +6,15 @@
         <h1>我的相册</h1>
         <p>将照片整理成专属相册，随时回顾珍贵记忆。</p>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新建相册</el-button>
+      <div class="al-header-actions">
+        <el-button :icon="Upload" @click="showImportDialog = true">导入</el-button>
+        <el-button
+          v-if="selectedAlbumIds.length"
+          type="primary"
+          @click="showBatchExport = true"
+        >导出选中 ({{ selectedAlbumIds.length }})</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreate">新建相册</el-button>
+      </div>
     </div>
 
     <!-- Loading skeleton -->
@@ -45,10 +53,29 @@
             <el-button
               circle
               size="small"
+              :icon="Download"
+              class="al-action-btn"
+              title="导出相册 ZIP"
+              @click="exportSingleAlbum(album)"
+            />
+            <el-button
+              circle
+              size="small"
               :icon="Delete"
               class="al-action-btn al-action-btn--danger"
               @click="confirmDelete(album)"
             />
+          </div>
+          <!-- Batch select checkbox -->
+          <div
+            class="al-card-check"
+            :class="{ 'al-card-check--on': selectedAlbumIds.includes(album.id) }"
+            @click.stop="toggleAlbumSelect(album.id)"
+          >
+            <svg v-if="selectedAlbumIds.includes(album.id)" width="12" height="12"
+                 viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
           </div>
         </div>
         <!-- Info -->
@@ -104,6 +131,31 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- Export single album dialog -->
+    <ExportDialog
+      v-if="exportTarget"
+      v-model="showSingleExport"
+      mode="album"
+      :album-id="exportTarget.id"
+      :album-title="exportTarget.title"
+      @update:model-value="v => { if (!v) exportTarget = null }"
+    />
+
+    <!-- Batch export albums dialog -->
+    <ExportDialog
+      v-if="showBatchExport"
+      v-model="showBatchExport"
+      mode="albums"
+      :album-ids="selectedAlbumIds"
+    />
+
+    <!-- Import dialog -->
+    <ImportDialog
+      v-if="showImportDialog"
+      v-model="showImportDialog"
+      @imported="() => albumStore.fetchAlbums()"
+    />
   </div>
 </template>
 
@@ -111,12 +163,33 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Collection, Delete, EditPen, Plus } from '@element-plus/icons-vue'
+import { Collection, Delete, Download, EditPen, Plus, Upload } from '@element-plus/icons-vue'
 import { useAlbumStore } from '@/stores/useAlbumStore'
+import ExportDialog from '@/components/transfer/ExportDialog.vue'
+import ImportDialog from '@/components/transfer/ImportDialog.vue'
+import { downloadAlbumZip } from '@/api/transfer'
 import type { Album } from '@/types/album'
 
 const router = useRouter()
 const albumStore = useAlbumStore()
+
+// ── Import / Export state ─────────────────────────────────────────────────────
+const showImportDialog  = ref(false)
+const showSingleExport  = ref(false)
+const showBatchExport   = ref(false)
+const exportTarget      = ref<Album | null>(null)
+const selectedAlbumIds  = ref<number[]>([])
+
+function toggleAlbumSelect(id: number) {
+  const idx = selectedAlbumIds.value.indexOf(id)
+  if (idx === -1) selectedAlbumIds.value.push(id)
+  else selectedAlbumIds.value.splice(idx, 1)
+}
+
+function exportSingleAlbum(album: Album) {
+  exportTarget.value = album
+  showSingleExport.value = true
+}
 
 // ── Form state ─────────────────────────────────────────────────────────────────
 const dialogVisible = ref(false)
@@ -321,5 +394,41 @@ async function confirmDelete(album: Album) {
   display: flex; align-items: center; justify-content: center;
   color: var(--no-text-muted);
   margin-bottom: 8px;
+}
+
+// ── Header actions ─────────────────────────────────────────────────────────────
+.al-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+// ── Card batch-select checkbox ─────────────────────────────────────────────────
+.al-card-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.85);
+  background: rgba(0,0,0,0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  opacity: 0;
+  z-index: 4;
+
+  .al-card:hover & { opacity: 1; }
+
+  &.al-card-check--on {
+    opacity: 1;
+    background: var(--el-color-primary);
+    border-color: var(--el-color-primary);
+  }
 }
 </style>

@@ -81,8 +81,56 @@
           >✕</button>
         </div>
         <el-text type="info" size="small" class="gl-total-text">共 {{ photoStore.total }} 张</el-text>
+
+        <!-- Select / Import -->
+        <el-button
+          size="small"
+          :type="selectMode ? 'primary' : ''"
+          @click="toggleSelectMode"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="margin-right:4px">
+            <polyline points="9 11 12 14 22 4"/>
+            <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+          </svg>
+          {{ selectMode ? `已选 ${selectedIds.length}` : '选择' }}
+        </el-button>
+
+        <el-button size="small" @click="showImportDialog = true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="margin-right:4px">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          导入
+        </el-button>
       </div>
     </div>
+
+    <!-- ── Multi-select floating bar ─────────────────────────────── -->
+    <Transition name="gl-selbar">
+      <div v-if="selectMode" class="gl-select-bar">
+        <span class="gl-select-bar-info">已选 <strong>{{ selectedIds.length }}</strong> 张</span>
+        <el-button size="small" text @click="selectAll">全选</el-button>
+        <el-button size="small" text @click="clearSelection">取消</el-button>
+        <el-button
+          size="small"
+          type="primary"
+          :disabled="!selectedIds.length"
+          @click="showExportDialog = true"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="margin-right:4px">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          导出 ZIP
+        </el-button>
+        <el-button size="small" @click="toggleSelectMode">完成</el-button>
+      </div>
+    </Transition>
 
     <!-- ── NL Search results ──────────────────────────────────────── -->
     <Transition name="gl-search-fade">
@@ -180,13 +228,23 @@
                   v-for="photo in groupedPhotos[year][month][day]"
                   :key="photo.id"
                   class="gl-photo-cell"
-                  @click="openViewer(photo)"
+                  :class="{ 'gl-photo-cell--selected': selectedIds.includes(photo.id) }"
+                  @click="selectMode ? togglePhotoSelect(photo.id, $event) : openViewer(photo)"
                 >
                   <ProgressiveImage
                     :src="`/api/v1/thumbnails/${photo.id}?size=256`"
                     :alt="photo.file_name"
                     :thumbhash="photo.thumbhash"
                   />
+                  <!-- Select mode checkbox -->
+                  <div v-if="selectMode" class="gl-cell-check" @click.stop="togglePhotoSelect(photo.id, $event)">
+                    <div :class="['gl-cell-checkbox', selectedIds.includes(photo.id) && 'gl-cell-checkbox--on']">
+                      <svg v-if="selectedIds.includes(photo.id)" width="12" height="12"
+                           viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                      </svg>
+                    </div>
+                  </div>
                   <!-- Hover overlay -->
                   <div class="gl-overlay">
                     <span class="gl-overlay-fname">{{ photo.file_name }}</span>
@@ -353,6 +411,21 @@
       @soft-delete="onSoftDelete"
       @toast="showToast"
     />
+
+    <!-- ── Export dialog ──────────────────────────────────────────── -->
+    <ExportDialog
+      v-if="showExportDialog"
+      v-model="showExportDialog"
+      mode="photos"
+      :photo-ids="selectedIds"
+    />
+
+    <!-- ── Import dialog ──────────────────────────────────────────── -->
+    <ImportDialog
+      v-if="showImportDialog"
+      v-model="showImportDialog"
+      @imported="() => photoStore.loadPhotos()"
+    />
   </div>
 </template>
 
@@ -366,6 +439,8 @@ import { searchApi } from '@/api/search'
 import { archiveApi } from '@/api/archive'
 import ImageViewer from '@/components/gallery/ImageViewer.vue'
 import ProgressiveImage from '@/components/gallery/ProgressiveImage.vue'
+import ExportDialog from '@/components/transfer/ExportDialog.vue'
+import ImportDialog from '@/components/transfer/ImportDialog.vue'
 import type { Photo } from '@/types/photo'
 import type { PhotoListParams } from '@/types/photo'
 
@@ -681,6 +756,32 @@ const nlSearching  = ref(false)
 const nlResults    = ref<Photo[] | null>(null)  // null = not in search mode
 const nlResultClause = ref('')
 const searchMode   = ref<'nl' | 'clip'>('nl')
+
+// ── Multi-select & transfer ───────────────────────────────────────────────────
+const selectMode       = ref(false)
+const selectedIds      = ref<number[]>([])
+const showExportDialog = ref(false)
+const showImportDialog = ref(false)
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) selectedIds.value = []
+}
+
+function togglePhotoSelect(id: number, event: MouseEvent) {
+  event.stopPropagation()
+  const idx = selectedIds.value.indexOf(id)
+  if (idx === -1) selectedIds.value.push(id)
+  else selectedIds.value.splice(idx, 1)
+}
+
+function selectAll() {
+  selectedIds.value = photoStore.photos.map(p => p.id)
+}
+
+function clearSelection() {
+  selectedIds.value = []
+}
 
 /** Unified dispatcher: routes to NL or CLIP search based on mode toggle */
 async function runSearch(): Promise<void> {
@@ -1431,6 +1532,71 @@ function clearNLSearch(): void {
   font-size: 13px;
   color: var(--no-text-muted);
 }
+
+/* ── Multi-select ────────────────────────────────────────────────── */
+.gl-photo-cell--selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--el-color-primary);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.gl-cell-check {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 3;
+}
+
+.gl-cell-checkbox {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.9);
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: background 0.15s, border-color 0.15s;
+
+  &.gl-cell-checkbox--on {
+    background: var(--el-color-primary);
+    border-color: var(--el-color-primary);
+  }
+}
+
+/* Select bar */
+.gl-select-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--no-bg-card);
+  border: 1px solid var(--no-border-low);
+  border-radius: 12px;
+  padding: 10px 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+  margin: 16px auto 0;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.gl-select-bar-info {
+  font-size: 13px;
+  color: var(--no-text-secondary);
+  margin-right: 4px;
+  strong { color: var(--no-text-primary); }
+}
+
+/* Select bar transition */
+.gl-selbar-enter-active, .gl-selbar-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.gl-selbar-enter-from, .gl-selbar-leave-to { opacity: 0; transform: translateY(12px); }
 
 /* ── Keyframes ───────────────────────────────────────────────────── */
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
