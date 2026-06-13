@@ -167,6 +167,42 @@
             </div>
           </div>
 
+          <!-- Face recognition task -->
+          <div class="db-task-item" :class="{ 'db-task-item--done': !faceStatus.running && !!faceStatus.last_run_result }">
+            <el-icon
+              class="db-task-icon"
+              :class="faceStatus.running ? 'db-task-icon--info is-loading' : faceStatus.last_run_result ? 'db-task-icon--done' : 'db-task-icon--muted'"
+            >
+              <Loading v-if="faceStatus.running" />
+              <CircleCheck v-else-if="faceStatus.last_run_result" />
+              <UserFilled v-else />
+            </el-icon>
+            <div class="db-task-body">
+              <div class="db-task-name">
+                {{ faceStatus.running ? '人脸识别进行中…' : faceStatus.last_run_result ? '人脸识别完成' : '人脸识别' }}
+              </div>
+              <div class="db-task-sub">
+                <template v-if="faceStatus.running">正在检测 &amp; 聚类，可切换页面</template>
+                <template v-else-if="faceStatus.last_run_result">
+                  检测 {{ faceStatus.last_run_result.faces_detected }} 张人脸，
+                  新增 {{ faceStatus.last_run_result.persons_created }} 位人物
+                </template>
+                <template v-else>未运行 — 前往「人物」页触发</template>
+              </div>
+              <el-progress
+                v-if="faceStatus.running"
+                :percentage="100"
+                status="striped"
+                striped-flow
+                :duration="10"
+                :stroke-width="3"
+                :show-text="false"
+                color="var(--no-info)"
+                style="margin-top: 6px"
+              />
+            </div>
+          </div>
+
           <div class="db-task-item db-task-item--muted">
             <el-icon class="db-task-icon db-task-icon--muted"><VideoPause /></el-icon>
             <div class="db-task-body">
@@ -201,22 +237,48 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { RefreshRight } from '@element-plus/icons-vue'
 import { dashboardApi, type DashboardStats } from '@/api/dashboard'
 import { useScanStore } from '@/stores/useScanStore'
 import { usePhotoStore } from '@/stores/usePhotoStore'
+import { personsApi } from '@/api/persons'
 import ScanProgress from '@/components/common/ScanProgress.vue'
 import ImageViewer from '@/components/gallery/ImageViewer.vue'
 import { formatBytes, formatDate } from '@/utils/format'
 import type { Photo } from '@/types/photo'
+import type { FaceRunStatus } from '@/types/person'
 
 const stats = ref<DashboardStats | null>(null)
 const scanStore = useScanStore()
 const photoStore = usePhotoStore()
 const refreshing = ref(false)
 const viewerPhoto = ref<Photo | null>(null)
+
+// ── Face recognition status ───────────────────────────────────────────────────
+const faceStatus = ref<FaceRunStatus>({ running: false, last_run_result: null })
+let facePoller: ReturnType<typeof setInterval> | null = null
+
+async function pollFaceStatus() {
+  try {
+    const { data } = await personsApi.status()
+    faceStatus.value = data
+    if (!data.running && facePoller) {
+      clearInterval(facePoller)
+      facePoller = null
+      // Refresh person count once task finishes
+      const { data: s } = await dashboardApi.stats()
+      stats.value = s
+    }
+  } catch { /* ignore transient network errors */ }
+}
+
+function ensureFacePolling() {
+  if (!facePoller) facePoller = setInterval(pollFaceStatus, 3000)
+}
+
+onBeforeUnmount(() => { if (facePoller) clearInterval(facePoller) })
 
 /** Top 3 photos by sharpness score */
 const topPhotos = computed<Photo[]>(() => {
@@ -248,7 +310,10 @@ onMounted(async () => {
     dashboardApi.stats().then(({ data }) => { stats.value = data }),
     scanStore.fetchTasks(),
     photoStore.fetchPage(true),
+    pollFaceStatus(),
   ])
+  // If already running when page loads, keep polling
+  if (faceStatus.value.running) ensureFacePolling()
 })
 
 async function refresh() {
@@ -256,7 +321,7 @@ async function refresh() {
   try {
     const { data } = await dashboardApi.stats()
     stats.value = data
-    await scanStore.fetchTasks()
+    await Promise.all([scanStore.fetchTasks(), pollFaceStatus()])
   } finally {
     refreshing.value = false
   }
