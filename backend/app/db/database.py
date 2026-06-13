@@ -93,6 +93,8 @@ async def _run_migrations(conn) -> None:
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_photos_stack_id ON photos(stack_id)"))
     if "is_stack_cover" not in photo_cols:
         await conn.execute(text("ALTER TABLE photos ADD COLUMN is_stack_cover BOOLEAN NOT NULL DEFAULT 0"))
+    if "vision_analyzed_at" not in photo_cols:
+        await conn.execute(text("ALTER TABLE photos ADD COLUMN vision_analyzed_at DATETIME"))
 
     # Face embedding dimension migration: face_recognition was 128-dim, insightface is 512-dim.
     # Clear incompatible legacy face data so the next /persons/run starts clean.
