@@ -269,6 +269,81 @@ async def _scan_and_link_album(scan_path: str, album_id: int) -> None:
             await album_service.add_photos_to_album(db, album_id, photo_ids)
 
 
+# ── POST /import/album/{album_id}/zip — add ZIP to existing album ──────────────
+
+@router.post("/album/{album_id}/zip", summary="上传 ZIP 包到已有相册，无需相册名")
+async def import_zip_to_album(
+    album_id: int,
+    file: UploadFile = File(..., description="ZIP 文件"),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Extract ZIP, save photos to {root}/PicJournal/album-{album_id}/,
+    trigger scan, and link discovered photos to the existing album.
+    Photos are sorted into library by taken_at as usual.
+    """
+    from app.models.album import Album
+    album = await db.get(Album, album_id)
+    if not album:
+        raise HTTPException(status_code=404, detail="Album not found")
+
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=422, detail="File must be a .zip archive")
+
+    root = await _get_library_root(db)
+    if root is None:
+        raise HTTPException(status_code=409, detail="No scan history found. Run a library scan first.")
+
+    dest = _resolve_dest(root, f"album-{album_id}")
+
+    content = await file.read()
+    await file.close()
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=422, detail="Invalid ZIP file")
+
+    saved: list[str] = []
+    skipped: list[str] = []
+
+    for member in zf.infolist():
+        if member.is_dir():
+            continue
+        member_path = Path(member.filename)
+        if member_path.name.startswith(".") or "__MACOSX" in member.filename:
+            continue
+        ext = member_path.suffix.lower()
+        if ext not in ALLOWED_EXTS:
+            skipped.append(member.filename)
+            continue
+        target = _safe_dest_path(dest, member_path.name)
+        try:
+            target.write_bytes(zf.read(member.filename))
+            saved.append(target.name)
+        except Exception:
+            skipped.append(member.filename)
+
+    zf.close()
+
+    if not saved:
+        raise HTTPException(status_code=422, detail=f"No valid photo files found in ZIP. Skipped: {skipped[:20]}")
+
+    asyncio.create_task(
+        _scan_and_link_album(str(dest), album_id),
+        name=f"import-zip-album-{album_id}",
+    )
+
+    return {
+        "album_id": album_id,
+        "album_name": album.title,
+        "saved": len(saved),
+        "skipped": skipped[:20],
+        "dest_path": str(dest),
+        "status": "scan_started",
+    }
+
+
 # ── POST /import/album/from-library ───────────────────────────────────────────
 
 class FromLibraryRequest(BaseModel):

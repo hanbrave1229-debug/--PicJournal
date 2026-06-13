@@ -202,8 +202,10 @@ async def _pipeline(force: bool) -> FaceRunResponse:
 
     combined_faces = existing_faces + all_faces
 
-    # ── 4. Re-cluster all embeddings ──────────────────────────────────────────
-    clustered: list[ClusteredFace] = cluster_faces(combined_faces)
+    # ── 4. Re-cluster all embeddings (CPU-heavy — must run in thread pool) ─────
+    clustered: list[ClusteredFace] = await loop.run_in_executor(
+        _face_executor, cluster_faces, combined_faces
+    )
 
     # Only process the NEW portion (tail of combined list)
     new_clustered = clustered[len(existing_faces):]
@@ -239,33 +241,43 @@ async def _pipeline(force: bool) -> FaceRunResponse:
 
         await session.commit()
 
-    # ── 6. Persist FaceCrop rows + save crop images ────────────────────────────
+    # ── 6. Save crop images (parallel, up to 4 at a time) ──────────────────────
     photo_id_to_path: dict[int, str] = {r.id: r.file_path for r in rows}
+
+    def _save_crop_sync(face: ClusteredFace, person_id: int | None) -> str | None:
+        src = photo_id_to_path.get(face["photo_id"])
+        if not src or not person_id:
+            return None
+        crop_filename = f"person_{person_id}_p{face['photo_id']}.jpg"
+        crop_dst = str(faces_dir / crop_filename)
+        ok = save_face_crop(
+            src,
+            face["bbox_top"], face["bbox_right"],
+            face["bbox_bottom"], face["bbox_left"],
+            crop_dst,
+        )
+        return crop_dst if ok else None
+
+    # Batch saves: 4 concurrent executors to avoid saturating I/O
+    sem = asyncio.Semaphore(4)
+
+    async def _bounded_save(face: ClusteredFace, person_id: int | None) -> str | None:
+        async with sem:
+            return await loop.run_in_executor(_face_executor, _save_crop_sync, face, person_id)
+
+    crop_tasks = [
+        _bounded_save(face, label_to_person_id.get(face["cluster_label"]))
+        for face in new_clustered
+    ]
+    crop_paths: list[str | None] = await asyncio.gather(*crop_tasks)
+
+    # ── 7. Persist FaceCrop rows ────────────────────────────────────────────────
     persons_created_final = 0
 
     async with AsyncSessionLocal() as session:
-        for face in new_clustered:
+        for face, crop_path in zip(new_clustered, crop_paths):
             label = face["cluster_label"]
             person_id = label_to_person_id.get(label)
-
-            crop_path: str | None = None
-            # Save face crop image
-            src = photo_id_to_path.get(face["photo_id"])
-            if src and person_id:
-                crop_filename = f"person_{person_id}_p{face['photo_id']}.jpg"
-                crop_dst = str(faces_dir / crop_filename)
-                ok = await loop.run_in_executor(
-                    None,
-                    save_face_crop,
-                    src,
-                    face["bbox_top"],
-                    face["bbox_right"],
-                    face["bbox_bottom"],
-                    face["bbox_left"],
-                    crop_dst,
-                )
-                if ok:
-                    crop_path = crop_dst
 
             fc = FaceCrop(
                 photo_id=face["photo_id"],
@@ -325,6 +337,7 @@ async def list_persons(include_hidden: bool = False) -> list[dict]:
 
     Uses a single LEFT JOIN + GROUP BY instead of N+1 individual count queries,
     which is critical when there are hundreds of persons.
+    Falls back to the first available FaceCrop path when cover_path is NULL.
     """
     async with AsyncSessionLocal() as session:
         # Subquery: distinct photo count per person
@@ -337,12 +350,30 @@ async def list_persons(include_hidden: bool = False) -> list[dict]:
             .subquery()
         )
 
+        # Subquery: first available crop_path per person (fallback cover)
+        first_crop_sq = (
+            select(
+                FaceCrop.person_id,
+                func.min(FaceCrop.id).label("min_crop_id"),
+            )
+            .where(FaceCrop.crop_path.is_not(None))
+            .group_by(FaceCrop.person_id)
+            .subquery()
+        )
+        crop_detail_sq = (
+            select(FaceCrop.person_id, FaceCrop.crop_path)
+            .join(first_crop_sq, FaceCrop.id == first_crop_sq.c.min_crop_id)
+            .subquery()
+        )
+
         stmt = (
             select(
                 Person,
                 func.coalesce(photo_count_sq.c.photo_count, 0).label("photo_count"),
+                crop_detail_sq.c.crop_path.label("fallback_crop"),
             )
             .outerjoin(photo_count_sq, Person.id == photo_count_sq.c.person_id)
+            .outerjoin(crop_detail_sq, Person.id == crop_detail_sq.c.person_id)
             .order_by(Person.name)
         )
 
@@ -355,14 +386,14 @@ async def list_persons(include_hidden: bool = False) -> list[dict]:
             {
                 "id": p.id,
                 "name": p.name,
-                "cover_path": p.cover_path,
+                "cover_path": p.cover_path or fallback_crop,
                 "is_hidden": p.is_hidden,
                 "is_locked": p.is_locked,
                 "photo_count": photo_count,
                 "created_at": p.created_at,
                 "updated_at": p.updated_at,
             }
-            for p, photo_count in rows
+            for p, photo_count, fallback_crop in rows
         ]
 
 

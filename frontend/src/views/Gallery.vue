@@ -424,6 +424,7 @@
     <ImportDialog
       v-if="showImportDialog"
       v-model="showImportDialog"
+      :hide-tabs="['library']"
       @imported="() => photoStore.loadPhotos()"
     />
   </div>

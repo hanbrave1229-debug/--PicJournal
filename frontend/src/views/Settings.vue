@@ -543,6 +543,32 @@ function onProviderChange() {
   if (p) cfgForm.model = p.models[0]?.value ?? ''
 }
 
+/**
+ * Encrypt a plaintext API key with the server's ephemeral RSA-OAEP public key.
+ * Returns base64 ciphertext. Falls back to plaintext if WebCrypto is unavailable.
+ */
+async function encryptApiKey(plaintext: string): Promise<{ api_key_cipher: string } | { api_key: string }> {
+  if (!plaintext) return { api_key: '' }
+  try {
+    const { data } = await axios.get<{ pubkey: string }>('/api/v1/ai-configs/pubkey')
+    const spkiDer = Uint8Array.from(atob(data.pubkey), c => c.charCodeAt(0))
+    const pubKey = await crypto.subtle.importKey(
+      'spki', spkiDer,
+      { name: 'RSA-OAEP', hash: 'SHA-256' },
+      false, ['encrypt'],
+    )
+    const cipherBuf = await crypto.subtle.encrypt(
+      { name: 'RSA-OAEP' }, pubKey,
+      new TextEncoder().encode(plaintext),
+    )
+    const cipherB64 = btoa(String.fromCharCode(...new Uint8Array(cipherBuf)))
+    return { api_key_cipher: cipherB64 }
+  } catch {
+    // fallback: plaintext (e.g. HTTP context where SubtleCrypto is restricted)
+    return { api_key: plaintext }
+  }
+}
+
 async function saveCfgDialog() {
   if (!cfgForm.name.trim() || !cfgForm.model.trim()) {
     ElMessage.warning('请填写配置名称和模型名称')
@@ -550,11 +576,13 @@ async function saveCfgDialog() {
   }
   cfgSaving.value = true
   try {
+    const keyPayload = await encryptApiKey(cfgForm.api_key)
+
     if (editingCfg.value) {
       await axios.put(`/api/v1/ai-configs/${editingCfg.value.id}`, {
         name:     cfgForm.name.trim(),
         provider: cfgForm.provider,
-        api_key:  cfgForm.api_key,   // empty = keep existing
+        ...keyPayload,
         base_url: cfgForm.base_url.trim() || null,
         model:    cfgForm.model.trim(),
       })
@@ -563,7 +591,7 @@ async function saveCfgDialog() {
       await axios.post('/api/v1/ai-configs', {
         name:     cfgForm.name.trim(),
         provider: cfgForm.provider,
-        api_key:  cfgForm.api_key,
+        ...keyPayload,
         base_url: cfgForm.base_url.trim() || null,
         model:    cfgForm.model.trim(),
       })

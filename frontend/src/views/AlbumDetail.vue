@@ -12,6 +12,9 @@
       </div>
       <div class="ad-header-actions" v-if="albumStore.currentAlbum">
         <span class="soft-badge">{{ albumStore.currentAlbumTotal }} 张</span>
+        <el-button size="small" plain :icon="Upload" @click="importDialogVisible = true">
+          导入 ZIP
+        </el-button>
         <el-button
           v-if="selectedIds.size > 0"
           type="danger"
@@ -89,6 +92,14 @@
       @prev="navigateViewer(-1)"
       @next="navigateViewer(1)"
     />
+
+    <!-- ImportDialog: ZIP-only, no album_name, links to current album -->
+    <ImportDialog
+      v-model="importDialogVisible"
+      :album-id="albumId"
+      :hide-tabs="['photos', 'library']"
+      @imported="onImported"
+    />
   </div>
 </template>
 
@@ -96,7 +107,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Loading, Picture, PictureFilled, Remove, Select } from '@element-plus/icons-vue'
+import { ArrowLeft, Loading, Picture, PictureFilled, Remove, Select, Upload } from '@element-plus/icons-vue'
+import ImportDialog from '@/components/transfer/ImportDialog.vue'
 import { useAlbumStore } from '@/stores/useAlbumStore'
 import ImageViewer from '@/components/gallery/ImageViewer.vue'
 import type { Photo } from '@/types/photo'
@@ -107,6 +119,13 @@ const albumStore = useAlbumStore()
 
 const albumId = computed(() => Number(route.params.id))
 const columns = ref(5)
+
+// ── Import ─────────────────────────────────────────────────────────────────────
+const importDialogVisible = ref(false)
+
+function onImported() {
+  albumStore.loadAlbumPhotos(albumId.value, true)
+}
 
 // ── Selection ──────────────────────────────────────────────────────────────────
 const selectedIds = ref<Set<number>>(new Set())

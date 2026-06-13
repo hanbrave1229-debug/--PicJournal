@@ -20,7 +20,7 @@ interface CityItem {
 
 interface PlacePhoto {
   id: number
-  thumbnail_256: string | null
+  thumbnail_url: string | null   // /api/v1/thumbnails/{id}?size=256
   taken_at: string | null
   city: string | null
   province: string | null
@@ -66,7 +66,7 @@ const activeCityInfo = computed(() =>
 const viewerPhotos = computed(() =>
   cityPhotos.value.map(p => ({
     id: p.id,
-    thumbnail_256: p.thumbnail_256,
+    thumbnail_256: p.thumbnail_url,
     thumbnail_1080: null,
     file_path: '',
     file_name: '',
@@ -256,8 +256,8 @@ watch(() => route.query.city, (c) => {
           @click="openViewer(idx)"
         >
           <img
-            v-if="photo.thumbnail_256"
-            :src="photo.thumbnail_256"
+            v-if="photo.thumbnail_url"
+            :src="photo.thumbnail_url"
             :alt="photo.ai_caption ?? ''"
             loading="lazy"
           />

@@ -76,7 +76,7 @@ async def list_cities(
     for row in rows:
         # Fetch cover: first non-deleted photo with a thumbnail in this city
         cover_stmt = (
-            select(Photo.thumbnail_256)
+            select(Photo.id)
             .where(
                 Photo.is_deleted.is_(False),
                 Photo.city == row.city,
@@ -85,13 +85,13 @@ async def list_cities(
             .order_by(Photo.taken_at.desc())
             .limit(1)
         )
-        cover_row = (await db.execute(cover_stmt)).scalar_one_or_none()
+        cover_pid = (await db.execute(cover_stmt)).scalar_one_or_none()
         items.append(CityItem(
             country=row.country,
             province=row.province,
             city=row.city,
             photo_count=row.photo_count,
-            cover_thumbnail=cover_row,
+            cover_thumbnail=f"/api/v1/thumbnails/{cover_pid}?size=256" if cover_pid else None,
         ))
 
     return items
@@ -120,7 +120,7 @@ async def photos_by_city(
     return [
         {
             "id": p.id,
-            "thumbnail_256": p.thumbnail_256,
+            "thumbnail_url": f"/api/v1/thumbnails/{p.id}?size=256" if p.thumbnail_256 else None,
             "taken_at": p.taken_at.isoformat() if p.taken_at else None,
             "city": p.city,
             "province": p.province,

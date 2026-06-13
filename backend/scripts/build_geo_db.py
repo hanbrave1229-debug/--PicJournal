@@ -142,11 +142,20 @@ def build() -> None:
         a1_key   = f"{cc}.{a1_code}"
 
         city_name    = parts[COL_NAME]
+        alt_names    = parts[COL_ALT_NAMES] if len(parts) > COL_ALT_NAMES else ""
         admin1_name  = admin1.get(a1_key, "")
         country_name_en = country.get(cc, cc)
         country_name = COUNTRY_ZH.get(country_name_en, country_name_en)
 
-        rows.append((city_name, admin1_name, country_name, lat, lon, pop, cc))
+        # Extract Chinese name from alternatenames (any token containing CJK ideographs)
+        name_zh = ""
+        for tok in alt_names.split(","):
+            tok = tok.strip()
+            if tok and any("一" <= ch <= "鿿" for ch in tok):
+                name_zh = tok
+                break  # take the first Chinese name found
+
+        rows.append((city_name, name_zh, admin1_name, country_name, lat, lon, pop, cc))
 
     print(f"{len(rows):,} cities")
 
@@ -159,6 +168,7 @@ def build() -> None:
         CREATE TABLE IF NOT EXISTS cities (
             id           INTEGER PRIMARY KEY,
             name         TEXT NOT NULL,
+            name_zh      TEXT,
             admin1_name  TEXT,
             country_name TEXT,
             lat          REAL NOT NULL,
@@ -168,8 +178,8 @@ def build() -> None:
         )
     """)
     conn.executemany(
-        "INSERT INTO cities (name, admin1_name, country_name, lat, lon, population, country_code) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO cities (name, name_zh, admin1_name, country_name, lat, lon, population, country_code) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
     # Spatial index via regular B-tree on (lat, lon)

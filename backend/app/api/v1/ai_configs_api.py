@@ -23,8 +23,22 @@ from app.schemas.ai_model_config import (
     AiModelConfigUpdate,
 )
 from app.services.crypto import decrypt, encrypt, mask_key
+from app.services.key_exchange import get_public_key_spki_b64, rsa_decrypt
 
 router = APIRouter()
+
+
+def _resolve_plaintext_key(api_key_cipher: str | None, api_key: str | None) -> str | None:
+    """
+    Return the plaintext API key from either the RSA-OAEP cipher or the legacy plaintext field.
+    Returns None if neither is provided (meaning: keep existing key unchanged).
+    """
+    if api_key_cipher:
+        try:
+            return rsa_decrypt(api_key_cipher)
+        except Exception:
+            raise HTTPException(status_code=400, detail="api_key_cipher 解密失败，请重新获取公钥后再试")
+    return api_key or None
 
 
 def _to_response(cfg: AiModelConfig) -> AiModelConfigResponse:
@@ -41,6 +55,18 @@ def _to_response(cfg: AiModelConfig) -> AiModelConfigResponse:
     )
 
 
+# ── Public key for client-side encryption ─────────────────────────────────────
+
+@router.get("/pubkey", summary="获取 RSA 公钥（SPKI/DER base64），用于前端加密 API Key")
+async def get_pubkey() -> dict:
+    """
+    Returns the ephemeral RSA-2048 public key in SPKI/DER base64 format.
+    The frontend imports this with SubtleCrypto and encrypts the API key with
+    RSA-OAEP / SHA-256 before sending. The private key never leaves the server.
+    """
+    return {"pubkey": get_public_key_spki_b64(), "algorithm": "RSA-OAEP", "hash": "SHA-256"}
+
+
 # ── List ──────────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[AiModelConfigResponse])
@@ -55,10 +81,11 @@ async def list_configs(db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=AiModelConfigResponse, status_code=201)
 async def create_config(body: AiModelConfigCreate, db: AsyncSession = Depends(get_db)):
+    plaintext_key = _resolve_plaintext_key(body.api_key_cipher, body.api_key) or ""
     cfg = AiModelConfig(
         name=body.name,
         provider=body.provider,
-        api_key_enc=encrypt(body.api_key),
+        api_key_enc=encrypt(plaintext_key),
         base_url=body.base_url or None,
         model=body.model,
         is_active=False,
@@ -89,9 +116,10 @@ async def update_config(
         cfg.base_url = body.base_url or None
     if body.model is not None:
         cfg.model = body.model
-    # Only update key if a non-empty value is provided
-    if body.api_key:
-        cfg.api_key_enc = encrypt(body.api_key)
+    # Only update key if a new value is provided (cipher takes precedence)
+    new_key = _resolve_plaintext_key(body.api_key_cipher, body.api_key)
+    if new_key:
+        cfg.api_key_enc = encrypt(new_key)
 
     await db.commit()
     await db.refresh(cfg)
@@ -143,6 +171,9 @@ async def test_config(config_id: int, db: AsyncSession = Depends(get_db)):
 
     from app.services.crypto import decrypt
     api_key  = decrypt(cfg.api_key_enc) if cfg.api_key_enc else ""
+    if not api_key.strip():
+        return {"ok": False, "latency_ms": None, "error": "未配置 API Key，请先编辑并填写密钥"}
+
     base_url = (cfg.base_url or "https://api.openai.com/v1").rstrip("/")
     model    = cfg.model
 

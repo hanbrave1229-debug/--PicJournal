@@ -21,7 +21,17 @@ import type { Photo } from '@/types/photo'
 
 // ── Props / Emits ─────────────────────────────────────────────────────────────
 
-const props = defineProps<{ modelValue: boolean }>()
+const props = defineProps<{
+  modelValue: boolean
+  /** Tabs to hide, e.g. ['library'] */
+  hideTabs?: string[]
+  /**
+   * When set, dialog is in "add to existing album" mode:
+   * - Only shows ZIP tab, no album_name input
+   * - Calls POST /import/album/{albumId}/zip
+   */
+  albumId?: number
+}>()
 const emit  = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
   /** Emitted when photos/albums were imported, so callers can refresh. */
@@ -107,12 +117,36 @@ function handleZipChange(file: UploadFile) {
 
 async function doImportZip() {
   if (!zipFile.value) { ElMessage.warning('请先选择 ZIP 文件'); return }
-  if (!zipAlbumName.value.trim()) { ElMessage.warning('请填写相册名称'); return }
 
   loading.value = true
   uploadPct.value = 0
 
   try {
+    // albumId mode: POST /import/album/{albumId}/zip (no album_name required)
+    if (props.albumId) {
+      const formData = new FormData()
+      formData.append('file', zipFile.value)
+      const { data: result } = await api.post(
+        `/import/album/${props.albumId}/zip`,
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (e: ProgressEvent) => {
+            if (e.total) uploadPct.value = Math.round((e.loaded / e.total) * 100)
+          },
+        },
+      )
+      ElMessage.success(`已导入 ${result.saved} 张照片，正在扫描入库…`)
+      emit('imported', { type: 'album', album_id: result.album_id })
+      zipFile.value = null
+      zipFileList.value = []
+      visible.value = false
+      return
+    }
+
+    // Regular mode: create new album
+    if (!zipAlbumName.value.trim()) { ElMessage.warning('请填写相册名称'); return }
+
     const result = await importAlbumFromZip(
       zipFile.value,
       zipAlbumName.value.trim(),
@@ -197,7 +231,7 @@ async function doImportFromLibrary() {
     <el-tabs v-model="activeTab" class="imp-tabs">
 
       <!-- ── Tab 1: Upload photos ── -->
-      <el-tab-pane label="上传照片" name="photos">
+      <el-tab-pane v-if="!props.hideTabs?.includes('photos')" label="上传照片" name="photos">
         <div class="imp-section">
 
           <!-- Drop zone -->
@@ -307,10 +341,10 @@ async function doImportFromLibrary() {
           </el-upload>
 
           <el-form label-position="top">
-            <el-form-item label="相册名称" required>
+            <el-form-item v-if="!props.albumId" label="相册名称" required>
               <el-input v-model="zipAlbumName" placeholder="旅行 2024" clearable />
             </el-form-item>
-            <el-form-item>
+            <el-form-item v-if="!props.albumId">
               <template #label>
                 目标子目录
                 <small class="imp-path-hint">
@@ -334,17 +368,17 @@ async function doImportFromLibrary() {
           <el-button
             type="primary"
             :loading="loading"
-            :disabled="!zipFile || !zipAlbumName.trim()"
+            :disabled="!zipFile || (!props.albumId && !zipAlbumName.trim())"
             style="width: 100%"
             @click="doImportZip"
           >
-            解压并建相册
+            {{ props.albumId ? '导入 ZIP 到当前相册' : '解压并建相册' }}
           </el-button>
         </div>
       </el-tab-pane>
 
       <!-- ── Tab 3: From library ── -->
-      <el-tab-pane label="从库中选照片" name="library">
+      <el-tab-pane v-if="!props.hideTabs?.includes('library')" label="从库中选照片" name="library">
         <div class="imp-section">
 
           <div class="imp-lib-header">

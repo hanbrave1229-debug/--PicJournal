@@ -38,6 +38,22 @@ _GEO_DB_PATH = Path(__file__).parent.parent.parent / "data" / "geo" / "geonames.
 # Search bounding box radius in degrees (~110 km per degree)
 _BBOX_DEG = 1.5
 
+# Chinese province name mapping (GeoNames English → 中文)
+_PROVINCE_ZH: dict[str, str] = {
+    "Beijing": "北京", "Shanghai": "上海", "Tianjin": "天津", "Chongqing": "重庆",
+    "Hebei": "河北", "Shanxi": "山西", "Inner Mongolia": "内蒙古", "Nei Mongol": "内蒙古",
+    "Liaoning": "辽宁", "Jilin": "吉林", "Heilongjiang": "黑龙江",
+    "Jiangsu": "江苏", "Zhejiang": "浙江", "Anhui": "安徽", "Fujian": "福建",
+    "Jiangxi": "江西", "Shandong": "山东", "Henan": "河南", "Hubei": "湖北",
+    "Hunan": "湖南", "Guangdong": "广东", "Guangxi": "广西", "Hainan": "海南",
+    "Sichuan": "四川", "Guizhou": "贵州", "Yunnan": "云南", "Tibet": "西藏",
+    "Xizang": "西藏", "Shaanxi": "陕西", "Gansu": "甘肃", "Qinghai": "青海",
+    "Ningxia": "宁夏", "Xinjiang": "新疆",
+    "Hong Kong": "香港", "Macao": "澳门", "Macau": "澳门", "Taiwan": "台湾",
+}
+_MUNICIPALITIES = {"北京", "上海", "天津", "重庆"}
+_AUTONOMOUS_REGIONS = {"内蒙古", "广西", "西藏", "宁夏", "新疆"}
+
 
 class GeoResult(TypedDict):
     country: str
@@ -99,10 +115,12 @@ class OfflineGeocoder:
 
         assert self._conn is not None
 
+        # Try to select name_zh if the column exists (added in newer DB builds)
+        _sel = "name, name_zh, admin1_name, country_name, lat, lon"
         try:
             rows = self._conn.execute(
-                """
-                SELECT name, admin1_name, country_name, lat, lon
+                f"""
+                SELECT {_sel}
                 FROM cities
                 WHERE lat BETWEEN ? AND ?
                   AND lon BETWEEN ? AND ?
@@ -114,16 +132,34 @@ class OfflineGeocoder:
                     lon - _BBOX_DEG, lon + _BBOX_DEG,
                 ),
             ).fetchall()
-        except Exception as exc:
-            logger.error("OfflineGeocoder: query failed — %s", exc)
-            return None
+        except Exception:
+            # Older DB without name_zh — fall back to basic columns
+            _sel = "name, admin1_name, country_name, lat, lon"
+            try:
+                rows = self._conn.execute(
+                    f"""
+                    SELECT {_sel}
+                    FROM cities
+                    WHERE lat BETWEEN ? AND ?
+                      AND lon BETWEEN ? AND ?
+                    ORDER BY population DESC
+                    LIMIT 50
+                    """,
+                    (
+                        lat - _BBOX_DEG, lat + _BBOX_DEG,
+                        lon - _BBOX_DEG, lon + _BBOX_DEG,
+                    ),
+                ).fetchall()
+            except Exception as exc:
+                logger.error("OfflineGeocoder: query failed — %s", exc)
+                return None
 
         if not rows:
             # Expand bbox 3× for sparse regions
             try:
                 rows = self._conn.execute(
-                    """
-                    SELECT name, admin1_name, country_name, lat, lon
+                    f"""
+                    SELECT {_sel}
                     FROM cities
                     WHERE lat BETWEEN ? AND ?
                       AND lon BETWEEN ? AND ?
@@ -144,14 +180,29 @@ class OfflineGeocoder:
         # Pick nearest by Haversine distance
         best = min(rows, key=lambda r: _haversine(lat, lon, r["lat"], r["lon"]))
 
-        city    = best["name"] or ""
+        # Prefer Chinese name if stored in DB (name_zh column), fall back to name
+        raw_city = best["name_zh"] if "name_zh" in best.keys() and best["name_zh"] else best["name"] or ""
         province = best["admin1_name"] or ""
         country  = best["country_name"] or ""
 
-        # Append Chinese suffixes for cleaner display
-        if country in ("China", "中国") and province and not province.endswith(("省", "市", "区", "自治区")):
-            province = province + "省"
-        if city and not city.endswith(("市", "县", "区", "镇")):
+        # Translate province to Chinese and append proper suffix
+        if country in ("China", "中国") and province:
+            zh = _PROVINCE_ZH.get(province, "")
+            if zh:
+                if zh in _MUNICIPALITIES:
+                    province = zh + "市"
+                elif zh in _AUTONOMOUS_REGIONS:
+                    province = zh + "自治区"
+                elif zh in ("香港", "澳门", "台湾"):
+                    province = zh
+                else:
+                    province = zh + "省"
+            elif not province.endswith(("省", "市", "区", "自治区")):
+                province = province + "省"
+
+        # City suffix
+        city = raw_city
+        if city and not city.endswith(("市", "县", "区", "镇", "岛", "乡")):
             city = city + "市"
 
         return GeoResult(country=country, province=province, city=city)

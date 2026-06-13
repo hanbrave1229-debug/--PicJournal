@@ -43,8 +43,9 @@ def decrypt(ciphertext: str) -> str:
         return ""
     try:
         return _get_fernet().decrypt(ciphertext.encode()).decode()
-    except Exception as e:
-        logger.warning("crypto: decryption failed: %s", e)
+    except Exception:
+        # Expected when secret.key changed between deployments; caller handles empty return
+        logger.debug("crypto: decryption failed (key mismatch or invalid ciphertext)")
         return ""
 
 
