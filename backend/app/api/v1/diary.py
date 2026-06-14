@@ -14,8 +14,10 @@ from app.schemas.diary import (
     DiaryResponse,
     DiaryUpsertRequest,
 )
+from sqlalchemy import select
+from app.models.ai_model_config import AiModelConfig
 from app.services import diary_service
-from app.services.config_service import get_config
+from app.services.crypto import decrypt as crypto_decrypt
 
 router = APIRouter()
 
@@ -84,12 +86,12 @@ async def generate_draft(
     Generate an AI diary draft using the user's configured LLM provider.
     Collects photo EXIF + AI tags, calls LLM, returns ~150-char draft.
     """
-    cfg = await get_config(db)
-
-    if not cfg.ai_api_key:
+    result = await db.execute(select(AiModelConfig).where(AiModelConfig.is_active.is_(True)))
+    active_cfg = result.scalar_one_or_none()
+    if not active_cfg or not crypto_decrypt(active_cfg.api_key_enc or ""):
         raise HTTPException(
             status_code=400,
-            detail="AI API Key 未配置，请前往设置页完成配置",
+            detail="AI API Key 未配置，请前往设置页选择并激活一个 AI 模型配置",
         )
 
     try:
@@ -98,9 +100,9 @@ async def generate_draft(
             diary_date=body.diary_date,
             photo_ids=body.photo_ids,
             mood=body.mood,
-            api_key=cfg.ai_api_key,
-            base_url=cfg.ai_base_url or "",
-            model=cfg.ai_model or "gpt-4o-mini",
+            api_key="",
+            base_url="",
+            model="",
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
