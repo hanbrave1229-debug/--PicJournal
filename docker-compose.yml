@@ -15,6 +15,8 @@ services:
       - ${DATA_DIR:-./data}/thumbnails:/app/data/thumbnails
       # 离线地理编码数据库（build_geo_db.py 生成的 geonames.db）
       - ${DATA_DIR:-./data}/geo:/app/data/geo
+      # 导入照片写入目录（可写，独立于只读的 /photos）
+      - ${DATA_DIR:-./data}/imported:/app/data/imported
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/db/photos.db
       - THUMBNAILS_DIR=/app/data/thumbnails

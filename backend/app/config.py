@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     # Directories
     photos_root: str = "/photos"
     thumbnails_dir: str = "/app/data/thumbnails"
+    # Writable directory for imported photos (separate from read-only /photos mount)
+    import_dir: str = "/app/data/imported"
 
     # Supported image extensions
     supported_extensions: tuple[str, ...] = (

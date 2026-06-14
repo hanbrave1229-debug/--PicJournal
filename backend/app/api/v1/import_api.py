@@ -56,11 +56,16 @@ async def _get_library_root(db: AsyncSession) -> Path | None:
     return None
 
 
-def _resolve_dest(root: Path, subdir: str) -> Path:
-    """Build  {root}/PicJournal/{subdir}/ and create it if absent."""
-    # Strip traversal attempts
+def _resolve_dest(root: Path | None, subdir: str) -> Path:
+    """
+    Build writable destination directory for imported photos.
+    Uses settings.import_dir (/app/data/imported/{subdir}) which is a
+    writable Docker volume — avoids writing into the read-only /photos mount.
+    """
+    from app.config import get_settings as _gs
+    import_base = Path(_gs().import_dir)
     safe_sub = Path(subdir.strip("/")).name or "imported"
-    dest = root / PICJOURNAL_FOLDER / safe_sub
+    dest = import_base / safe_sub
     dest.mkdir(parents=True, exist_ok=True)
     return dest
 
@@ -112,14 +117,7 @@ async def import_photos(
     if len(files) > 200:
         raise HTTPException(status_code=422, detail="Maximum 200 files per request")
 
-    root = await _get_library_root(db)
-    if root is None:
-        raise HTTPException(
-            status_code=409,
-            detail="No scan history found. Run a library scan first so the system knows where your photos live.",
-        )
-
-    dest = _resolve_dest(root, subdir)
+    dest = _resolve_dest(None, subdir)
 
     saved: list[str] = []
     skipped: list[str] = []
@@ -176,12 +174,8 @@ async def import_album_from_zip(
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=422, detail="File must be a .zip archive")
 
-    root = await _get_library_root(db)
-    if root is None:
-        raise HTTPException(status_code=409, detail="No scan history found. Run a library scan first.")
-
     effective_sub = subdir.strip() or album_name
-    dest = _resolve_dest(root, effective_sub)
+    dest = _resolve_dest(None, effective_sub)
 
     content = await file.read()
     await file.close()
@@ -290,11 +284,7 @@ async def import_zip_to_album(
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=422, detail="File must be a .zip archive")
 
-    root = await _get_library_root(db)
-    if root is None:
-        raise HTTPException(status_code=409, detail="No scan history found. Run a library scan first.")
-
-    dest = _resolve_dest(root, f"album-{album_id}")
+    dest = _resolve_dest(None, f"album-{album_id}")
 
     content = await file.read()
     await file.close()

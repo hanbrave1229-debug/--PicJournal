@@ -149,6 +149,18 @@ async def geo_status(db: AsyncSession = Depends(get_db)) -> GeoStatus:
     return GeoStatus(db_available=available, pending_count=pending)
 
 
+@router.post("/run", status_code=202)
+async def run_geocoding_batch() -> dict:
+    """
+    Fire-and-forget batch geocoding for all un-geocoded GPS photos.
+    Returns immediately; geocoding runs in the background.
+    """
+    from app.services.scan_service import _run_geocoding
+
+    asyncio.create_task(_run_geocoding(), name="manual-geocoding")
+    return {"status": "accepted", "message": "Batch geocoding started in background"}
+
+
 @router.post("/{photo_id}", response_model=GeoResult)
 async def geocode_photo(
     photo_id: int,
@@ -185,15 +197,3 @@ async def geocode_photo(
         province=photo.province,
         city=photo.city,
     )
-
-
-@router.post("/run", status_code=202)
-async def run_geocoding_batch() -> dict:
-    """
-    Fire-and-forget batch geocoding for all un-geocoded GPS photos.
-    Returns immediately; geocoding runs in the background.
-    """
-    from app.services.scan_service import _run_geocoding
-
-    asyncio.create_task(_run_geocoding(), name="manual-geocoding")
-    return {"status": "accepted", "message": "Batch geocoding started in background"}
