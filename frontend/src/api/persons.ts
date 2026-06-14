@@ -65,6 +65,11 @@ export const personsApi = {
     return axios.post(`${BASE}/reset`)
   },
 
+  /** Prune persons with fewer than minPhotos face crops (default 2). Locked persons are kept. */
+  prune(minPhotos = 2): Promise<{ data: { persons_deleted: number; crops_deleted: number } }> {
+    return axios.post(`${BASE}/prune`, null, { params: { min_photos: minPhotos } })
+  },
+
   /** Build URL for a face crop image by filesystem path */
   cropUrl(coverPath: string | null): string {
     if (!coverPath) return ''

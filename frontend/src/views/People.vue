@@ -14,6 +14,15 @@
         </el-button>
         <el-button
           size="small"
+          title="删除照片数少于2张的人物（误检清理）"
+          :disabled="personStore.running"
+          @click="prunePersons"
+        >
+          <el-icon><Remove /></el-icon>
+          清理
+        </el-button>
+        <el-button
+          size="small"
           title="清空所有人脸识别数据（照片不受影响），重置后可重新识别"
           :disabled="personStore.running"
           @click="resetAnalysis"
@@ -292,7 +301,7 @@ import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   CircleCheck, Close, Connection, Delete, Hide, Lock, Loading,
-  PictureFilled, Refresh, Select, Unlock, User, VideoPlay, View,
+  PictureFilled, Refresh, Remove, Select, Unlock, User, VideoPlay, View,
 } from '@element-plus/icons-vue'
 import { usePersonStore } from '@/stores/usePersonStore'
 import { personsApi } from '@/api/persons'
@@ -489,6 +498,23 @@ async function runAnalysis() {
     showBanner(result.message)
   } catch {
     ElMessage.error('识别失败，请重试')
+  }
+}
+
+async function prunePersons() {
+  try {
+    await ElMessageBox.confirm(
+      '将删除照片数少于 2 张的人物（通常是误识别的路人或模糊人脸），锁定的人物不受影响。',
+      '清理低质量人物',
+      { confirmButtonText: '确认清理', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return }
+  try {
+    const { data } = await personsApi.prune(2)
+    showBanner(`清理完成：删除 ${data.persons_deleted} 位低质量人物`)
+    await personStore.fetchPersons(showHidden.value)
+  } catch {
+    ElMessage.error('清理失败，请重试')
   }
 }
 

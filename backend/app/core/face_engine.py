@@ -132,8 +132,8 @@ def detect_faces_in_image(photo_id: int, image_path: str) -> list[DetectedFace]:
 
     results: list[DetectedFace] = []
     for face in faces:
-        if face.det_score < 0.5:
-            continue  # Low-confidence detection
+        if face.det_score < 0.7:
+            continue  # Low-confidence detection — raised from 0.5 to reduce false positives
         if face.embedding is None:
             continue
 
@@ -154,18 +154,20 @@ def detect_faces_in_image(photo_id: int, image_path: str) -> list[DetectedFace]:
 # ── Clustering ────────────────────────────────────────────────────────────────
 def cluster_faces(
     faces: list[DetectedFace],
-    eps: float = 0.5,
-    min_samples: int = 1,
+    eps: float = 0.4,
+    min_samples: int = 2,
 ) -> list[ClusteredFace]:
     """
     Assign each face to a cluster (= person) using DBSCAN on cosine distance
     of 512-dim ArcFace embeddings (L2-normalized unit vectors).
 
-    Args:
-        faces:       All detected faces across the entire library.
-        eps:         DBSCAN cosine-distance threshold. 0.5 ≈ cos_sim > 0.5,
-                     which works well for InsightFace buffalo_sc.
-        min_samples: Minimum faces per cluster. 1 so single-photo persons are kept.
+    Tuning rationale (3200-photo library):
+      eps=0.4      — cosine dist 0.4 ≈ similarity 0.6; tighter than old 0.5
+                     so strangers aren't merged, but robust enough for same
+                     person across angles/lighting.
+      min_samples=2 — require ≥2 photos to form a Person; lone faces become
+                     noise (label -1) and are not persisted, eliminating the
+                     long tail of 1-photo false-positive persons.
 
     Returns:
         Same list with `cluster_label` added. Label −1 = noise (outlier).

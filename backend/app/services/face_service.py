@@ -561,6 +561,46 @@ async def get_person_by_id(person_id: int) -> dict | None:
         }
 
 
+async def prune_small_persons(min_photos: int = 2) -> dict:
+    """
+    Delete Person rows (+ their FaceCrop rows) whose photo count < min_photos.
+    Locked persons are always preserved.
+    """
+    async with AsyncSessionLocal() as session:
+        # Find person IDs with too few photos, excluding locked ones
+        subq = (
+            select(FaceCrop.person_id, func.count(FaceCrop.id).label("cnt"))
+            .where(FaceCrop.person_id.is_not(None))
+            .group_by(FaceCrop.person_id)
+            .subquery()
+        )
+        result = await session.execute(
+            select(Person.id)
+            .join(subq, Person.id == subq.c.person_id, isouter=True)
+            .where(
+                Person.is_locked.is_(False),
+                (subq.c.cnt < min_photos) | (subq.c.cnt.is_(None)),
+            )
+        )
+        ids_to_delete = [row[0] for row in result.all()]
+
+        if not ids_to_delete:
+            return {"persons_deleted": 0, "crops_deleted": 0}
+
+        crop_result = await session.execute(
+            delete(FaceCrop).where(FaceCrop.person_id.in_(ids_to_delete))
+        )
+        person_result = await session.execute(
+            delete(Person).where(Person.id.in_(ids_to_delete))
+        )
+        await session.commit()
+
+    return {
+        "persons_deleted": person_result.rowcount,
+        "crops_deleted": crop_result.rowcount,
+    }
+
+
 async def reset_face_data() -> dict:
     """Delete ALL face recognition data (FaceCrop + Person rows) and clear face_analyzed_at checkpoints."""
     async with AsyncSessionLocal() as session:

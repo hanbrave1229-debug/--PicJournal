@@ -68,6 +68,18 @@ async def reset_face_data() -> dict:
     return await face_service.reset_face_data()
 
 
+@router.post("/prune", summary="Delete persons with fewer than min_photos photos")
+async def prune_persons(min_photos: int = Query(2, ge=1, le=20)) -> dict:
+    """
+    Remove Person rows whose photo count is below min_photos (default 2).
+    Cleans up the long tail of 1-photo false positives after re-clustering.
+    Locked persons are never pruned.
+    """
+    if face_service._is_running:
+        raise HTTPException(status_code=409, detail="Face analysis is currently running")
+    return await face_service.prune_small_persons(min_photos)
+
+
 @router.post("/rebuild-covers", summary="Backfill cover_path for persons missing one")
 async def rebuild_covers() -> dict:
     """
