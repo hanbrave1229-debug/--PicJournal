@@ -133,19 +133,20 @@ async def start_tag_photos(
         select(AiModelConfig).where(AiModelConfig.is_active.is_(True))
     )
     active_cfg = active_result.scalar_one_or_none()
-    if not active_cfg or not active_cfg.api_key_enc:
+    if not active_cfg:
         raise HTTPException(
             status_code=400,
-            detail="AI API Key 未配置，请前往「智能设置」完成配置",
+            detail="未选择 AI 模型配置，请在设置页激活一个配置",
         )
-    api_key = decrypt(active_cfg.api_key_enc)
-    if not api_key.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="AI API Key 未配置，请前往「智能设置」完成配置",
-        )
+    # api_key may be empty for local models (e.g. LM Studio) — that's OK
+    api_key  = decrypt(active_cfg.api_key_enc) if active_cfg.api_key_enc else ""
     base_url = active_cfg.base_url or ""
     model    = active_cfg.model or "gpt-4o-mini"
+    if not base_url:
+        raise HTTPException(
+            status_code=400,
+            detail=f"配置「{active_cfg.name}」缺少 Base URL，请在设置页补充",
+        )
 
     # Fetch photos to tag
     q = select(Photo).where(Photo.is_deleted == False)  # noqa: E712

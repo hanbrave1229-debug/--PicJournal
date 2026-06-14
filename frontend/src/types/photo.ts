@@ -83,4 +83,6 @@ export interface PhotoListParams {
   date_to?: string
   /** Filter by media type: 'photo' | 'video' | undefined (all) */
   media_type?: 'photo' | 'video'
+  /** Filter by AI tag status: true=tagged, false=untagged, undefined=all */
+  tagged?: boolean
 }

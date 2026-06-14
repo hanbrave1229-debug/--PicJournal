@@ -280,6 +280,9 @@
                   {{ tagStatus.current_file }}
                 </span>
               </div>
+              <div v-if="tagStatus.last_failure && !tagStatus.running" class="st-tag-failure-detail">
+                {{ tagStatus.last_failure }}
+              </div>
             </div>
           </Transition>
         </div>
@@ -874,6 +877,7 @@ interface TagStatus {
   percent: number
   current_file: string
   error: string | null
+  last_failure: string | null
 }
 
 const tagLimit  = ref(50)
@@ -901,7 +905,15 @@ async function pollTagStatus(): Promise<void> {
       if (data.error) {
         ElMessage.error(`打标任务出错: ${data.error}`)
       } else if (data.total > 0) {
-        ElMessage.success(`打标完成：成功 ${data.done} 张，失败 ${data.failed} 张`)
+        if (data.failed > 0 && data.done === 0) {
+          const hint = data.last_failure ? `\n原因：${data.last_failure}` : ''
+          ElMessage.error({ message: `打标全部失败（${data.failed} 张）${hint}`, duration: 8000 })
+        } else if (data.failed > 0) {
+          const hint = data.last_failure ? `，最近失败原因：${data.last_failure}` : ''
+          ElMessage.warning({ message: `打标完成：成功 ${data.done} 张，失败 ${data.failed} 张${hint}`, duration: 6000 })
+        } else {
+          ElMessage.success(`打标完成：成功 ${data.done} 张`)
+        }
       }
     }
   } catch {
@@ -1420,6 +1432,14 @@ async function xmpShowConflicts() {
   white-space: nowrap;
   font-family: var(--no-font-mono);
   color: var(--no-text-secondary);
+}
+
+.st-tag-failure-detail {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #f87171;
+  font-family: var(--no-font-mono);
+  word-break: break-all;
 }
 
 // ── Provider select option ────────────────────────────────────────────────────

@@ -52,6 +52,22 @@
             @click="filter.media_type = 'video'"
           >▶ 视频</el-button>
         </el-button-group>
+
+        <!-- AI tag status filter -->
+        <el-button-group size="small">
+          <el-button
+            :type="filter.tagged === undefined ? 'primary' : ''"
+            @click="filter.tagged = undefined"
+          >全部</el-button>
+          <el-button
+            :type="filter.tagged === true ? 'primary' : ''"
+            @click="filter.tagged = true"
+          >✦ 已打标</el-button>
+          <el-button
+            :type="filter.tagged === false ? 'primary' : ''"
+            @click="filter.tagged = false"
+          >○ 未打标</el-button>
+        </el-button-group>
       </div>
 
       <div class="gl-toolbar-right">
@@ -267,6 +283,7 @@
                     <div class="gl-overlay-badges">
                       <span class="gl-badge-score">{{ scoreLabel(photo) }}</span>
                       <span v-if="isRaw(photo)" class="gl-badge-raw">RAW</span>
+                      <span v-if="photo.ai_caption" class="gl-badge-tagged" title="已 AI 打标">✦</span>
                     </div>
                     <!-- AI tags (first 3) -->
                     <div v-if="photo.ai_tags?.length" class="gl-overlay-tags">
@@ -1137,6 +1154,16 @@ function clearNLSearch(): void {
   background: var(--no-accent);
   color: var(--no-bg-main);
   border-radius: 3px;
+}
+
+.gl-badge-tagged {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  background: #7c3aed;
+  color: #fff;
+  border-radius: 3px;
+  line-height: 1.4;
 }
 
 // ── Archive / Trash hover action buttons ──────────────────────────────

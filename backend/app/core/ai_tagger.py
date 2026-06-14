@@ -56,6 +56,7 @@ class TaggingProgress:
         self.failed = 0
         self.current_file: str = ""
         self.error: str | None = None
+        self.last_failure: str | None = None  # detail of the most recent per-photo failure
 
     def to_dict(self) -> dict:
         pct = int(self.done / self.total * 100) if self.total else 0
@@ -67,6 +68,7 @@ class TaggingProgress:
             "percent": pct,
             "current_file": self.current_file,
             "error": self.error,
+            "last_failure": self.last_failure,
         }
 
 
@@ -119,8 +121,7 @@ async def tag_single_photo(
     """
     img_path = _thumbnail_path(photo)
     if img_path is None:
-        # No thumbnail available — skip silently
-        logger.warning("No thumbnail for photo id=%s, skipping", photo.id)
+        logger.warning("No thumbnail for photo id=%s (%s), skipping", photo.id, photo.file_name)
         return False
 
     try:
@@ -130,16 +131,20 @@ async def tag_single_photo(
         return False
 
     url = (base_url.rstrip("/") if base_url else "https://api.openai.com/v1") + "/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    # Merge system prompt into user message for compatibility with local models
+    # that don't support the `system` role (e.g. LM Studio, Ollama).
+    combined_user = (
+        _SYSTEM_PROMPT + "\n\n" + _USER_PROMPT
+    )
     payload = {
         "model": model,
-        "max_tokens": 256,
+        "max_tokens": 512,
         "temperature": 0.2,
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": [
@@ -147,23 +152,30 @@ async def tag_single_photo(
                         "type": "image_url",
                         "image_url": {"url": f"data:{media_type};base64,{b64}"},
                     },
-                    {"type": "text", "text": _USER_PROMPT},
+                    {"type": "text", "text": combined_user},
                 ],
             },
         ],
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
+        if not resp.is_success:
+            err_body = resp.text[:300]
+            logger.error(
+                "VLM HTTP %s for photo id=%s: %s", resp.status_code, photo.id, err_body
+            )
+            progress.last_failure = f"HTTP {resp.status_code}: {err_body}"
+            return False
+
         raw = resp.json()["choices"][0]["message"]["content"].strip()
 
-        # Strip accidental markdown fences
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
+        # Strip markdown fences (```json ... ``` or ``` ... ```)
+        import re as _re
+        json_match = _re.search(r"\{.*\}", raw, _re.DOTALL)
+        if json_match:
+            raw = json_match.group(0)
 
         parsed = json.loads(raw)
         caption: str = parsed.get("caption", "")
@@ -191,11 +203,15 @@ async def tag_single_photo(
 
         return True
 
-    except (httpx.HTTPStatusError, httpx.RequestError) as exc:
-        logger.error("VLM API error for photo id=%s: %s", photo.id, exc)
+    except httpx.RequestError as exc:
+        msg = f"连接失败: {exc}"
+        logger.error("VLM request error for photo id=%s: %s", photo.id, exc)
+        progress.last_failure = msg
         return False
     except (json.JSONDecodeError, KeyError) as exc:
+        msg = f"响应解析失败: {exc} | raw={raw[:200] if 'raw' in dir() else 'N/A'}"
         logger.error("VLM response parse error for photo id=%s: %s", photo.id, exc)
+        progress.last_failure = msg
         return False
 
 
@@ -228,6 +244,7 @@ async def run_batch_tagging(
             ok = await tag_single_photo(photo, db, api_key, base_url, model)
             if ok:
                 progress.done += 1
+                progress.last_failure = None  # clear on success streak
             else:
                 progress.failed += 1
 
