@@ -111,7 +111,11 @@
                 </span>
                 <span class="st-ai-meta-item">
                   <span class="st-ai-meta-k">Key</span>
-                  <span class="st-ai-meta-v st-ai-meta-key">{{ cfg.api_key_masked || '未设置' }}</span>
+                  <span
+                    class="st-ai-meta-v st-ai-meta-key"
+                    :class="{ 'st-key-warn': cfg.api_key_masked === '****' }"
+                    :title="cfg.api_key_masked === '****' ? '密钥解密失败，请重新编辑填写' : ''"
+                  >{{ cfg.api_key_masked || '未设置' }}{{ cfg.api_key_masked === '****' ? ' ⚠' : '' }}</span>
                 </span>
                 <span v-if="cfg.base_url" class="st-ai-meta-item">
                   <span class="st-ai-meta-k">URL</span>
@@ -189,8 +193,13 @@
                   </el-icon>
                 </template>
               </el-input>
-              <div v-if="editingCfg?.api_key_masked" class="st-key-hint">
-                当前：{{ editingCfg.api_key_masked }}
+              <div v-if="editingCfg?.api_key_masked" class="st-key-hint" :class="{ 'st-key-hint-warn': editingCfg.api_key_masked === '****' }">
+                <template v-if="editingCfg.api_key_masked === '****'">
+                  ⚠ 密钥解密失败（容器重启后丢失），请重新填写
+                </template>
+                <template v-else>
+                  当前：{{ editingCfg.api_key_masked }}（留空则保持原 Key 不变）
+                </template>
               </div>
             </el-form-item>
             <el-form-item label="Base URL">
@@ -1144,6 +1153,9 @@ async function xmpShowConflicts() {
     font-family: var(--no-font-mono);
     letter-spacing: 0.02em;
   }
+  &.st-key-warn {
+    color: var(--el-color-warning);
+  }
 }
 
 .st-ai-card-actions {
@@ -1470,6 +1482,10 @@ async function xmpShowConflicts() {
   font-size: 11px;
   color: var(--no-text-muted);
   font-family: var(--no-font-mono);
+  &.st-key-hint-warn {
+    color: var(--el-color-warning);
+    font-family: inherit;
+  }
 }
 
 // ── Action row ────────────────────────────────────────────────────────────────

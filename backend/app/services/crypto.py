@@ -14,7 +14,7 @@ from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
 
-_KEY_PATH = Path("/app/data/secret.key")
+_KEY_PATH = Path("/app/data/secrets/secret.key")
 
 
 @lru_cache(maxsize=1)

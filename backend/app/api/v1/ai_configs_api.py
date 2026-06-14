@@ -170,9 +170,11 @@ async def test_config(config_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(404, "Config not found")
 
     from app.services.crypto import decrypt
-    api_key  = decrypt(cfg.api_key_enc) if cfg.api_key_enc else ""
-    if not api_key.strip():
+    if not cfg.api_key_enc:
         return {"ok": False, "latency_ms": None, "error": "未配置 API Key，请先编辑并填写密钥"}
+    api_key = decrypt(cfg.api_key_enc)
+    if not api_key.strip():
+        return {"ok": False, "latency_ms": None, "error": "API Key 解密失败，容器重启导致密钥丢失，请重新编辑并填写密钥"}
 
     base_url = (cfg.base_url or "https://api.openai.com/v1").rstrip("/")
     model    = cfg.model

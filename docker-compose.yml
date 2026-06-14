@@ -17,6 +17,8 @@ services:
       - ${DATA_DIR:-./data}/geo:/app/data/geo
       # 导入照片写入目录（可写，独立于只读的 /photos）
       - ${DATA_DIR:-./data}/imported:/app/data/imported
+      # 加密密钥持久化（重启容器不会重新生成，防止 API Key 解密失败）
+      - ${DATA_DIR:-./data}/secrets:/app/data/secrets
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/db/photos.db
       - THUMBNAILS_DIR=/app/data/thumbnails
