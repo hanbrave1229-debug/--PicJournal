@@ -28,6 +28,7 @@ async def get_config(db: AsyncSession = Depends(get_db)):
         ai_enabled=cfg.ai_enabled,
         ai_auto_tag=cfg.ai_auto_tag,
         ai_batch_size=cfg.ai_batch_size,
+        face_min_photos=cfg.face_min_photos,
     )
 
 
@@ -47,6 +48,7 @@ async def update_config(
         ai_enabled=cfg.ai_enabled,
         ai_auto_tag=cfg.ai_auto_tag,
         ai_batch_size=cfg.ai_batch_size,
+        face_min_photos=cfg.face_min_photos,
     )
 
 

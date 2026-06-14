@@ -102,6 +102,14 @@ async def _run_migrations(conn) -> None:
     if "duration" not in photo_cols:
         await conn.execute(text("ALTER TABLE photos ADD COLUMN duration REAL"))
 
+    # app_config.face_min_photos — minimum face crops to form a Person
+    existing_cfg = await conn.execute(text("PRAGMA table_info(app_config)"))
+    cfg_cols = {row[1] for row in existing_cfg.fetchall()}
+    if "face_min_photos" not in cfg_cols:
+        await conn.execute(
+            text("ALTER TABLE app_config ADD COLUMN face_min_photos INTEGER NOT NULL DEFAULT 5")
+        )
+
     # Face embedding dimension migration: face_recognition was 128-dim, insightface is 512-dim.
     # Clear incompatible legacy face data so the next /persons/run starts clean.
     try:

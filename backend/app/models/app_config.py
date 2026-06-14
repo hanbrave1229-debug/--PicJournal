@@ -31,6 +31,9 @@ class AppConfig(Base):
     ai_auto_tag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     ai_batch_size: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
+    # ── 人脸识别 ───────────────────────────────────────────────────────────────
+    face_min_photos: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

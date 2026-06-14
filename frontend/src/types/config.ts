@@ -10,6 +10,7 @@ export interface AIConfigResponse {
   ai_enabled: boolean
   ai_auto_tag: boolean
   ai_batch_size: number
+  face_min_photos: number
 }
 
 export interface AIConfigUpdate {
@@ -21,6 +22,7 @@ export interface AIConfigUpdate {
   ai_enabled?: boolean
   ai_auto_tag?: boolean
   ai_batch_size?: number
+  face_min_photos?: number
 }
 
 export interface ConnectionTestRequest {

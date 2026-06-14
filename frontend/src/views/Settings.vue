@@ -801,6 +801,7 @@ async function loadAiConfig() {
     aiCfg.autoTag   = data.ai_auto_tag
     aiCfg.batchSize = data.ai_batch_size
     maskedKey.value = data.ai_api_key_masked
+    ai.peopleMinCount = data.face_min_photos ?? 5
   } catch { /* ignore — backend may not be running */ }
 }
 
@@ -837,8 +838,9 @@ async function saveAiConfig() {
       ai_model:      aiCfg.model,
       ai_base_url:   aiCfg.baseUrl || null,
       ai_enabled:    aiCfg.enabled,
-      ai_auto_tag:   aiCfg.autoTag,
-      ai_batch_size: aiCfg.batchSize,
+      ai_auto_tag:     aiCfg.autoTag,
+      ai_batch_size:   aiCfg.batchSize,
+      face_min_photos: ai.peopleMinCount,
     }
     // Only send key if the user explicitly typed one
     if (aiCfg.apiKey.trim()) {

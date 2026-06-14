@@ -15,6 +15,7 @@ class AIConfigUpdate(BaseModel):
     ai_enabled:    bool | None = None
     ai_auto_tag:   bool | None = None
     ai_batch_size: int | None = Field(None, ge=1, le=50)
+    face_min_photos: int | None = Field(None, ge=1, le=20)
 
 
 class AIConfigResponse(BaseModel):
@@ -26,6 +27,7 @@ class AIConfigResponse(BaseModel):
     ai_enabled:    bool
     ai_auto_tag:   bool
     ai_batch_size: int
+    face_min_photos: int
 
     model_config = {"from_attributes": True}
 

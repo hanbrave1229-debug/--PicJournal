@@ -336,12 +336,23 @@ async def _pipeline(force: bool) -> FaceRunResponse:
 
         await session.commit()
 
+    # ── 7. Auto-prune persons below face_min_photos threshold ──────────────────
+    from app.services.config_service import get_config as _get_config
+    async with AsyncSessionLocal() as session:
+        cfg = await _get_config(session)
+        face_min = cfg.face_min_photos
+    prune_result = await prune_small_persons(face_min)
+    logger.info(
+        "Auto-prune (min=%d): deleted %d persons, %d crops",
+        face_min, prune_result["persons_deleted"], prune_result["crops_deleted"],
+    )
+
     return FaceRunResponse(
         photos_processed=len(rows),
         faces_detected=len(all_faces),
         persons_created=persons_created,
         persons_updated=persons_updated,
-        message=f"完成：{len(rows)} 张照片，检测到 {len(all_faces)} 张人脸，识别 {persons_created} 位人物",
+        message=f"完成：{len(rows)} 张照片，检测到 {len(all_faces)} 张人脸，识别 {persons_created} 位人物（已自动清理 {prune_result['persons_deleted']} 个低频人物）",
     )
 
 
