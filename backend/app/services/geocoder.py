@@ -185,9 +185,13 @@ class OfflineGeocoder:
         province = best["admin1_name"] or ""
         country  = best["country_name"] or ""
 
-        # Translate province to Chinese and append proper suffix
-        if country in ("China", "中国") and province:
+        is_china = country in ("China", "中国")
+
+        # Translate province to Chinese and append proper suffix (China only)
+        province_zh = ""
+        if is_china and province:
             zh = _PROVINCE_ZH.get(province, "")
+            province_zh = zh
             if zh:
                 if zh in _MUNICIPALITIES:
                     province = zh + "市"
@@ -200,10 +204,17 @@ class OfflineGeocoder:
             elif not province.endswith(("省", "市", "区", "自治区")):
                 province = province + "省"
 
-        # City suffix
+        # City suffix:
+        #   - Foreign cities: keep the name as-is (中文 if available, else English),
+        #     never append 市 — "巴黎市" / "Düsseldorf市" look wrong.
+        #   - China: append 市, except subdivisions of municipalities (直辖市)
+        #     which are districts → append 区 (大兴区, not 大兴市).
         city = raw_city
-        if city and not city.endswith(("市", "县", "区", "镇", "岛", "乡")):
-            city = city + "市"
+        if is_china and city and not city.endswith(("市", "县", "区", "镇", "岛", "乡")):
+            # In a 直辖市, a sub-area is a 区 (大兴区) — but the municipality's own
+            # centre keeps 市 (北京 → 北京市, not 北京区).
+            is_municipal_subarea = province_zh in _MUNICIPALITIES and city != province_zh
+            city = city + ("区" if is_municipal_subarea else "市")
 
         return GeoResult(country=country, province=province, city=city)
 
