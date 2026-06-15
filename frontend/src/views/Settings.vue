@@ -248,6 +248,17 @@
                   style="width: 80px"
                 />
               </div>
+              <div class="st-tag-limit-wrap">
+                <span class="st-tag-limit-label">并发数</span>
+                <el-input-number
+                  v-model="ai.vlmConcurrency"
+                  :min="1" :max="8"
+                  size="small"
+                  controls-position="right"
+                  style="width: 70px"
+                  @change="saveAiConfig"
+                />
+              </div>
               <el-button
                 type="primary"
                 size="small"
@@ -724,6 +735,7 @@ const ai = reactive({
   duplicates: true,
   pets: true,
   scene: true,
+  vlmConcurrency: 1,
 })
 
 // ── 文件夹 (static mock — real data comes from scan tasks) ─────────────────────
@@ -804,7 +816,8 @@ async function loadAiConfig() {
     aiCfg.autoTag   = data.ai_auto_tag
     aiCfg.batchSize = data.ai_batch_size
     maskedKey.value = data.ai_api_key_masked
-    ai.peopleMinCount = data.face_min_photos ?? 5
+    ai.peopleMinCount  = data.face_min_photos ?? 5
+    ai.vlmConcurrency  = data.vlm_concurrency ?? 1
   } catch { /* ignore — backend may not be running */ }
 }
 
@@ -844,6 +857,7 @@ async function saveAiConfig() {
       ai_auto_tag:     aiCfg.autoTag,
       ai_batch_size:   aiCfg.batchSize,
       face_min_photos: ai.peopleMinCount,
+      vlm_concurrency: ai.vlmConcurrency,
     }
     // Only send key if the user explicitly typed one
     if (aiCfg.apiKey.trim()) {

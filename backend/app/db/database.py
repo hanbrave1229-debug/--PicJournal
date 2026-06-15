@@ -109,6 +109,10 @@ async def _run_migrations(conn) -> None:
         await conn.execute(
             text("ALTER TABLE app_config ADD COLUMN face_min_photos INTEGER NOT NULL DEFAULT 5")
         )
+    if "vlm_concurrency" not in cfg_cols:
+        await conn.execute(
+            text("ALTER TABLE app_config ADD COLUMN vlm_concurrency INTEGER NOT NULL DEFAULT 1")
+        )
 
     # Face embedding dimension migration: face_recognition was 128-dim, insightface is 512-dim.
     # Clear incompatible legacy face data so the next /persons/run starts clean.

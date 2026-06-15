@@ -34,6 +34,9 @@ class AppConfig(Base):
     # ── 人脸识别 ───────────────────────────────────────────────────────────────
     face_min_photos: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
+    # ── VLM 打标 ────────────────────────────────────────────────────────────────
+    vlm_concurrency: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

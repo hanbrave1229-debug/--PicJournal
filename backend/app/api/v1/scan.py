@@ -148,6 +148,11 @@ async def start_tag_photos(
             detail=f"配置「{active_cfg.name}」缺少 Base URL，请在设置页补充",
         )
 
+    # Read concurrency from app config
+    from app.services.config_service import get_config as _get_app_cfg
+    app_cfg = await _get_app_cfg(db)
+    vlm_concurrency = app_cfg.vlm_concurrency
+
     # Fetch photos to tag
     q = select(Photo).where(Photo.is_deleted == False)  # noqa: E712
     if not retag:
@@ -168,7 +173,8 @@ async def start_tag_photos(
             )
             bg_photos = list(r.scalars().all())
             await ai_tagger.run_batch_tagging(
-                bg_photos, bg_db, api_key, base_url, model
+                bg_photos, bg_db, api_key, base_url, model,
+                concurrency=vlm_concurrency,
             )
 
     asyncio.create_task(_bg())

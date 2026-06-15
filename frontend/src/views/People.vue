@@ -299,6 +299,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import axios from 'axios'
 import {
   CircleCheck, Close, Connection, Delete, Hide, Lock, Loading,
   PictureFilled, Refresh, Remove, Select, Unlock, User, VideoPlay, View,
@@ -502,15 +503,16 @@ async function runAnalysis() {
 }
 
 async function prunePersons() {
+  const n = faceMinPhotos.value
   try {
     await ElMessageBox.confirm(
-      '将删除照片数少于 2 张的人物（通常是误识别的路人或模糊人脸），锁定的人物不受影响。',
+      `将删除照片数少于 ${n} 张的人物（通常是误识别的路人或模糊人脸），锁定的人物不受影响。\n当前阈值 ${n} 张，可在设置页「形成人物相册的最少照片数」调整。`,
       '清理低质量人物',
       { confirmButtonText: '确认清理', cancelButtonText: '取消', type: 'warning' },
     )
   } catch { return }
   try {
-    const { data } = await personsApi.prune(2)
+    const { data } = await personsApi.prune(n)
     showBanner(`清理完成：删除 ${data.persons_deleted} 位低质量人物`)
     await personStore.fetchPersons(showHidden.value)
   } catch {
@@ -545,7 +547,15 @@ function onImgErr(e: Event) {
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────────────────
-onMounted(() => personStore.fetchPersons(false))
+const faceMinPhotos = ref(2)
+
+onMounted(async () => {
+  personStore.fetchPersons(false)
+  try {
+    const { data } = await axios.get('/api/v1/config')
+    faceMinPhotos.value = data.face_min_photos ?? 2
+  } catch { /* ignore */ }
+})
 </script>
 
 <style scoped lang="scss">

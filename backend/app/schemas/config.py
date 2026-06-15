@@ -16,6 +16,7 @@ class AIConfigUpdate(BaseModel):
     ai_auto_tag:   bool | None = None
     ai_batch_size: int | None = Field(None, ge=1, le=50)
     face_min_photos: int | None = Field(None, ge=1, le=20)
+    vlm_concurrency: int | None = Field(None, ge=1, le=8)
 
 
 class AIConfigResponse(BaseModel):
@@ -28,6 +29,7 @@ class AIConfigResponse(BaseModel):
     ai_auto_tag:   bool
     ai_batch_size: int
     face_min_photos: int
+    vlm_concurrency: int
 
     model_config = {"from_attributes": True}
 
