@@ -14,8 +14,10 @@ class Settings(BaseSettings):
     # Directories
     photos_root: str = "/photos"
     thumbnails_dir: str = "/app/data/thumbnails"
-    # Writable directory for imported photos (separate from read-only /photos mount)
-    import_dir: str = "/app/data/imported"
+    # Imported photos land inside the real library under a dedicated app folder,
+    # so they are scanned and browsed together with the rest of the library.
+    # Requires the /photos mount to be read-write.
+    import_dir: str = "/photos/PicJournal"
 
     # Supported image extensions
     supported_extensions: tuple[str, ...] = (

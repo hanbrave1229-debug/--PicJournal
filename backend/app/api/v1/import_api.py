@@ -58,9 +58,9 @@ async def _get_library_root(db: AsyncSession) -> Path | None:
 
 def _resolve_dest(root: Path | None, subdir: str) -> Path:
     """
-    Build writable destination directory for imported photos.
-    Uses settings.import_dir (/app/data/imported/{subdir}) which is a
-    writable Docker volume — avoids writing into the read-only /photos mount.
+    Build destination directory for imported photos: settings.import_dir/{subdir}
+    (default /photos/PicJournal/{subdir}). Lives inside the real library so the
+    triggered scan files them alongside everything else. Requires /photos rw.
     """
     from app.config import get_settings as _gs
     import_base = Path(_gs().import_dir)

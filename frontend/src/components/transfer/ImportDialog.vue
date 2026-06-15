@@ -62,9 +62,10 @@ const photoSubdir   = ref('imported')
 const photoResult   = ref<ImportPhotosResult | null>(null)
 
 const photoDestPath = computed(() => {
-  if (!scanRoot.value) return '（需先运行一次扫描）'
+  // Imports are written into the library under /photos/PicJournal/{subdir}
+  // (fixed server-side; see backend settings.import_dir).
   const sub = photoSubdir.value.trim() || 'imported'
-  return `${scanRoot.value}/PicJournal/${sub}/`
+  return `/photos/PicJournal/${sub}/`
 })
 
 function handlePhotoDrop(rawFiles: File[]) {
@@ -344,7 +345,7 @@ async function doImportFromLibrary() {
               <template #label>
                 目标子目录
                 <small class="imp-path-hint">
-                  {{ scanRoot ? `${scanRoot}/PicJournal/${zipSubdir || zipAlbumName || '…'}/` : '（需先运行扫描）' }}
+                  {{ `/photos/PicJournal/${zipSubdir || zipAlbumName || '…'}/` }}
                 </small>
               </template>
               <el-input v-model="zipSubdir" :placeholder="zipAlbumName || 'album'" clearable>

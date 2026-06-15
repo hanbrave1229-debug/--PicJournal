@@ -465,13 +465,13 @@
       v-if="showImportDialog"
       v-model="showImportDialog"
       :hide-tabs="['library']"
-      @imported="() => photoStore.loadPhotos()"
+      @imported="onImported"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import { usePhotoStore } from '@/stores/usePhotoStore'
@@ -479,6 +479,7 @@ import { useAlbumStore } from '@/stores/useAlbumStore'
 import { diaryApi } from '@/api/diary'
 import { searchApi } from '@/api/search'
 import { archiveApi } from '@/api/archive'
+import { scanApi } from '@/api/scan'
 import ImageViewer from '@/components/gallery/ImageViewer.vue'
 import ProgressiveImage from '@/components/gallery/ProgressiveImage.vue'
 import ExportDialog from '@/components/transfer/ExportDialog.vue'
@@ -602,6 +603,14 @@ function scrollToDate(key: string) {
 
 /** Update the active ruler key based on scroll position. */
 function onContentScroll() {
+  // Fallback load-more: trigger when scrolled near the bottom, in case the
+  // IntersectionObserver misses (e.g. fast scroll or sentinel not yet observed).
+  const sc = getScrollContainer()
+  if (sc && photoStore.hasMore && !photoStore.loading) {
+    if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 800) {
+      photoStore.fetchNextPage()
+    }
+  }
   for (const key of rulerKeys.value) {
     const year = key.split('-')[0]
     const el = document.getElementById(`tl-${key}`) ?? document.getElementById(`tl-${year}`)
@@ -778,12 +787,31 @@ async function batchDelete(): Promise<void> {
 const sentinel = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
 
+async function loadMoreUntilFilled() {
+  // Keep loading while the sentinel is still near the bottom (handles the case
+  // where one page doesn't fill the viewport and the observer won't re-fire).
+  let guard = 0
+  while (photoStore.hasMore && !photoStore.loading && guard < 20) {
+    const el = sentinel.value
+    const sc = getScrollContainer()
+    if (!el || !sc) break
+    const r = el.getBoundingClientRect()
+    const cr = sc.getBoundingClientRect()
+    if (r.top > cr.bottom + 600) break  // sentinel comfortably below viewport
+    await photoStore.fetchNextPage()
+    await nextTick()
+    guard++
+  }
+}
+
 onMounted(async () => {
   await photoStore.fetchPage(true)
+  await nextTick()   // ensure the sentinel element is rendered before observing
 
+  // root = the actual scroll container (.app-main), not the viewport
   observer = new IntersectionObserver(
-    (entries) => { if (entries[0].isIntersecting) photoStore.fetchNextPage() },
-    { threshold: 0.1 },
+    (entries) => { if (entries[0].isIntersecting) loadMoreUntilFilled() },
+    { root: getScrollContainer(), rootMargin: '600px', threshold: 0 },
   )
   if (sentinel.value) observer.observe(sentinel.value)
 
@@ -831,6 +859,23 @@ const selectedIds      = ref<number[]>([])
 const batchDeleting    = ref(false)
 const showExportDialog = ref(false)
 const showImportDialog = ref(false)
+
+/** After an import: poll the scan task to completion, then refresh the gallery. */
+async function onImported(payload?: { scan_task_id?: number }) {
+  const taskId = payload?.scan_task_id
+  if (taskId) {
+    ElMessage.info('正在扫描入库，完成后自动刷新…')
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        const { data } = await scanApi.status(taskId)
+        if (['completed', 'done', 'failed'].includes(String(data.status).toLowerCase())) break
+      } catch { /* keep polling */ }
+    }
+  }
+  await photoStore.fetchPage(true)
+  ElMessage.success('照片库已刷新')
+}
 
 function toggleSelectMode() {
   selectMode.value = !selectMode.value
