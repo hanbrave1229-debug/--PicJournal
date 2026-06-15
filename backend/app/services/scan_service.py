@@ -19,10 +19,15 @@ from app.services.config_service import get_config
 logger = logging.getLogger(__name__)
 
 
-async def _run_geocoding() -> None:
+async def _run_geocoding(force: bool = False) -> None:
     """
-    Batch-geocode photos that have GPS coordinates but no city yet.
-    Runs after each scan — gracefully skips if the GeoNames DB is absent.
+    Batch-geocode photos that have GPS coordinates.
+
+    - force=False (default): only photos with no city yet. Runs after each scan.
+    - force=True: re-geocode ALL GPS photos, overwriting existing values. Use
+      this after rebuilding the GeoNames DB (e.g. to pick up new Chinese names).
+
+    Gracefully skips if the GeoNames DB is absent.
     """
     from app.services.geocoder import get_geocoder
 
@@ -31,46 +36,52 @@ async def _run_geocoding() -> None:
         logger.info("geocoding: GeoNames DB not available — skipping (run scripts/build_geo_db.py)")
         return
 
+    BATCH = 500
     try:
-        async with AsyncSessionLocal() as geo_db:
-            result = await geo_db.execute(
-                select(Photo)
-                .where(
-                    Photo.is_deleted.is_(False),
-                    Photo.gps_lat.is_not(None),
-                    Photo.gps_lon.is_not(None),
-                    Photo.city.is_(None),        # only un-geocoded photos
+        total_geocoded = 0
+        cursor = 0  # last processed photo id (force mode pages by id)
+        while True:
+            async with AsyncSessionLocal() as geo_db:
+                q = (
+                    select(Photo)
+                    .where(
+                        Photo.is_deleted.is_(False),
+                        Photo.gps_lat.is_not(None),
+                        Photo.gps_lon.is_not(None),
+                    )
+                    .order_by(Photo.id.asc())
+                    .limit(BATCH)
                 )
-                .limit(500)
-            )
-            photos = list(result.scalars().all())
+                if force:
+                    q = q.where(Photo.id > cursor)        # page through all photos
+                else:
+                    q = q.where(Photo.city.is_(None))     # only un-geocoded photos
 
-        if not photos:
-            logger.info("geocoding: all GPS photos already geocoded")
-            return
+                photos = list((await geo_db.execute(q)).scalars().all())
+                if not photos:
+                    break
 
-        logger.info("geocoding: processing %d photos", len(photos))
-        geocoded = 0
+                geocoded = 0
+                for photo in photos:
+                    cursor = photo.id
+                    if photo.gps_lat is None or photo.gps_lon is None:
+                        continue
+                    geo = geocoder.reverse(photo.gps_lat, photo.gps_lon)
+                    if geo:
+                        photo.country  = geo["country"]
+                        photo.province = geo["province"]
+                        photo.city     = geo["city"]
+                        geocoded += 1
 
-        async with AsyncSessionLocal() as geo_db:
-            result = await geo_db.execute(
-                select(Photo).where(Photo.id.in_([p.id for p in photos]))
-            )
-            fresh = list(result.scalars().all())
+                await geo_db.commit()
+                total_geocoded += geocoded
 
-            for photo in fresh:
-                if photo.gps_lat is None or photo.gps_lon is None:
-                    continue
-                geo = geocoder.reverse(photo.gps_lat, photo.gps_lon)
-                if geo:
-                    photo.country  = geo["country"]
-                    photo.province = geo["province"]
-                    photo.city     = geo["city"]
-                    geocoded += 1
+            # Non-force mode processes a single batch then exits (legacy behaviour);
+            # force mode loops until all GPS photos are paged through.
+            if not force:
+                break
 
-            await geo_db.commit()
-
-        logger.info("geocoding: completed %d / %d photos", geocoded, len(photos))
+        logger.info("geocoding: completed, %d photos updated (force=%s)", total_geocoded, force)
 
     except Exception:
         logger.exception("geocoding: unexpected error")

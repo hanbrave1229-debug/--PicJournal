@@ -147,13 +147,32 @@ def build() -> None:
         country_name_en = country.get(cc, cc)
         country_name = COUNTRY_ZH.get(country_name_en, country_name_en)
 
-        # Extract Chinese name from alternatenames (any token containing CJK ideographs)
+        # Extract Chinese name from alternatenames. Prefer a token that contains
+        # CJK ideographs but NO Japanese kana / Korean hangul, so we don't pick a
+        # Japanese or Korean alternate (e.g. "サムドゥプツェ区") for a Chinese city.
+        def _has_cjk(s: str) -> bool:
+            return any("一" <= ch <= "鿿" for ch in s)
+
+        def _has_kana_or_hangul(s: str) -> bool:
+            return any(
+                ("぀" <= ch <= "ヿ")  # hiragana + katakana
+                or ("가" <= ch <= "힣")  # hangul syllables
+                for ch in s
+            )
+
         name_zh = ""
+        fallback_zh = ""
         for tok in alt_names.split(","):
             tok = tok.strip()
-            if tok and any("一" <= ch <= "鿿" for ch in tok):
-                name_zh = tok
-                break  # take the first Chinese name found
+            if not tok or not _has_cjk(tok):
+                continue
+            if _has_kana_or_hangul(tok):
+                fallback_zh = fallback_zh or tok  # last resort only
+                continue
+            name_zh = tok
+            break  # first pure-CJK token wins
+        if not name_zh:
+            name_zh = fallback_zh
 
         rows.append((city_name, name_zh, admin1_name, country_name, lat, lon, pop, cc))
 

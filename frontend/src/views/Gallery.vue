@@ -1024,6 +1024,10 @@ function clearNLSearch(): void {
   gap: 8px;
 }
 
+.gl-toolbar-left {
+  gap: 4px;
+}
+
 /* ── Content ─────────────────────────────────────────────────────── */
 .gl-content {
   padding: 16px 16px 80px;

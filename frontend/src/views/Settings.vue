@@ -363,13 +363,16 @@
             </div>
           </div>
 
-          <!-- 文字识别 -->
-          <div class="st-row st-row--tall">
+          <!-- 文字识别（未开发） -->
+          <div class="st-row st-row--tall st-row--disabled">
             <div class="st-row-info">
-              <div class="st-row-title">文字识别 (OCR)</div>
+              <div class="st-row-title">
+                文字识别 (OCR)
+                <el-tag size="small" type="info" effect="plain" round>未开发</el-tag>
+              </div>
               <div class="st-row-desc">自动识别照片内的文字内容</div>
             </div>
-            <el-switch v-model="ai.ocr" />
+            <el-switch v-model="ai.ocr" disabled />
           </div>
 
           <!-- 相似重复 -->
@@ -381,27 +384,33 @@
             <el-switch v-model="ai.duplicates" />
           </div>
 
-          <!-- 宠物识别 -->
-          <div class="st-row st-row--tall">
+          <!-- 宠物识别（未开发） -->
+          <div class="st-row st-row--tall st-row--disabled">
             <div class="st-row-info">
-              <div class="st-row-title">宠物识别</div>
+              <div class="st-row-title">
+                宠物识别
+                <el-tag size="small" type="info" effect="plain" round>未开发</el-tag>
+              </div>
               <div class="st-row-desc">支持 39 种猫狗品种识别</div>
             </div>
             <div class="st-row-controls">
-              <el-button size="small" plain @click="toast('正在重新扫描宠物特征...')">重新识别</el-button>
-              <el-switch v-model="ai.pets" />
+              <el-button size="small" plain disabled>重新识别</el-button>
+              <el-switch v-model="ai.pets" disabled />
             </div>
           </div>
 
-          <!-- 画面识别 -->
-          <div class="st-row st-row--tall st-row--last">
+          <!-- 画面识别（未开发） -->
+          <div class="st-row st-row--tall st-row--last st-row--disabled">
             <div class="st-row-info">
-              <div class="st-row-title">画面识别</div>
+              <div class="st-row-title">
+                画面识别
+                <el-tag size="small" type="info" effect="plain" round>未开发</el-tag>
+              </div>
               <div class="st-row-desc">图片内容理解，包含以文搜图、场景物体识别等功能</div>
             </div>
             <div class="st-row-controls">
-              <el-button size="small" plain @click="toast('场景物体识别模型初始化中...')">重新识别</el-button>
-              <el-switch v-model="ai.scene" />
+              <el-button size="small" plain disabled>重新识别</el-button>
+              <el-switch v-model="ai.scene" disabled />
             </div>
           </div>
 
@@ -1327,6 +1336,17 @@ async function xmpShowConflicts() {
   font-weight: 500;
   color: var(--no-text-primary);
   margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 未开发功能：整行置灰 */
+.st-row--disabled {
+  opacity: 0.55;
+}
+.st-row--disabled .st-row-title {
+  color: var(--no-text-secondary);
 }
 
 .st-row-desc {

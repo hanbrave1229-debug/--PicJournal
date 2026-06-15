@@ -74,13 +74,14 @@ async def list_cities(
 
     items: list[CityItem] = []
     for row in rows:
-        # Fetch cover: first non-deleted photo with a thumbnail in this city
+        # Fetch cover: newest non-deleted photo in this city. We do NOT require
+        # thumbnail_256 to be set — the /thumbnails endpoint regenerates on demand,
+        # so requiring a pre-cached thumbnail would leave some cities cover-less.
         cover_stmt = (
             select(Photo.id)
             .where(
                 Photo.is_deleted.is_(False),
                 Photo.city == row.city,
-                Photo.thumbnail_256.is_not(None),
             )
             .order_by(Photo.taken_at.desc())
             .limit(1)
@@ -150,15 +151,23 @@ async def geo_status(db: AsyncSession = Depends(get_db)) -> GeoStatus:
 
 
 @router.post("/run", status_code=202)
-async def run_geocoding_batch() -> dict:
+async def run_geocoding_batch(
+    force: bool = Query(False, description="重新地理编码所有 GPS 照片（覆盖已有城市），用于重建 GeoNames 库后刷新中文名"),
+) -> dict:
     """
-    Fire-and-forget batch geocoding for all un-geocoded GPS photos.
+    Fire-and-forget batch geocoding.
+    - force=False: only un-geocoded GPS photos.
+    - force=True: re-geocode ALL GPS photos (overwrite), e.g. after rebuilding
+      the GeoNames DB to apply new Chinese city names.
     Returns immediately; geocoding runs in the background.
     """
     from app.services.scan_service import _run_geocoding
 
-    asyncio.create_task(_run_geocoding(), name="manual-geocoding")
-    return {"status": "accepted", "message": "Batch geocoding started in background"}
+    asyncio.create_task(_run_geocoding(force=force), name="manual-geocoding")
+    return {
+        "status": "accepted",
+        "message": "Batch geocoding started in background" + ("（force 全量刷新）" if force else ""),
+    }
 
 
 @router.post("/{photo_id}", response_model=GeoResult)

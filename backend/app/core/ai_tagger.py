@@ -106,6 +106,33 @@ def _encode_image(path: Path) -> tuple[str, str]:
     return data, media_type
 
 
+async def _ensure_thumbnail(photo: Photo, db: AsyncSession) -> Path | None:
+    """
+    Regenerate the 256-px thumbnail on demand if it is missing on disk.
+    Mirrors the on-demand logic in the thumbnails API endpoint so tagging
+    self-heals when the thumbnails volume was wiped but originals remain.
+    Returns the thumbnail Path, or None if regeneration is impossible.
+    """
+    try:
+        from app.core.thumbnail_gen import generate_thumbnails
+
+        source_path = photo.file_path
+        if getattr(photo, "media_type", "photo") == "video":
+            return None  # videos: skip on-demand regen here
+        if not source_path or not Path(source_path).exists():
+            return None
+
+        results = await generate_thumbnails(source_path, photo.id)
+        thumb = results.get(256)
+        if thumb and Path(thumb).exists():
+            photo.thumbnail_256 = thumb
+            await db.commit()
+            return Path(thumb)
+    except Exception as exc:  # noqa: BLE001 — non-fatal, just report
+        logger.warning("On-demand thumbnail regen failed for id=%s: %s", photo.id, exc)
+    return None
+
+
 # ── Single-photo tagging ──────────────────────────────────────────────────────
 
 async def tag_single_photo(
@@ -121,13 +148,21 @@ async def tag_single_photo(
     """
     img_path = _thumbnail_path(photo)
     if img_path is None:
-        logger.warning("No thumbnail for photo id=%s (%s), skipping", photo.id, photo.file_name)
+        # Thumbnail file missing on disk (e.g. thumbnails volume not persisted).
+        # Try to regenerate on-demand from the original file before giving up.
+        img_path = await _ensure_thumbnail(photo, db)
+    if img_path is None:
+        msg = f"缩略图缺失且无法生成: id={photo.id} {photo.file_name}"
+        logger.warning(msg)
+        progress.last_failure = msg
         return False
 
     try:
         b64, media_type = _encode_image(img_path)
     except OSError as exc:
-        logger.warning("Cannot read thumbnail for photo id=%s: %s", photo.id, exc)
+        msg = f"缩略图读取失败: id={photo.id} {exc}"
+        logger.warning(msg)
+        progress.last_failure = msg
         return False
 
     url = (base_url.rstrip("/") if base_url else "https://api.openai.com/v1") + "/chat/completions"
@@ -159,7 +194,10 @@ async def tag_single_photo(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        # trust_env=False: ignore HTTP_PROXY/HTTPS_PROXY env vars so a LAN /
+        # self-hosted model endpoint (e.g. LM Studio) is reached directly
+        # instead of being routed through the host's global proxy.
+        async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
             resp = await client.post(url, headers=headers, json=payload)
         if not resp.is_success:
             err_body = resp.text[:300]
