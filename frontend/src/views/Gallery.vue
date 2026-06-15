@@ -160,6 +160,13 @@
           </svg>
           导出 ZIP
         </el-button>
+        <el-button
+          size="small"
+          type="danger"
+          :disabled="!selectedIds.length"
+          :loading="batchDeleting"
+          @click="batchDelete"
+        >移入回收站</el-button>
         <el-button size="small" @click="toggleSelectMode">完成</el-button>
       </div>
     </Transition>
@@ -465,7 +472,8 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import axios from 'axios'
 import { usePhotoStore } from '@/stores/usePhotoStore'
 import { useAlbumStore } from '@/stores/useAlbumStore'
 import { diaryApi } from '@/api/diary'
@@ -740,6 +748,32 @@ async function handleTrashFromGallery(photo: Photo): Promise<void> {
   showToast('已移入回收站')
 }
 
+async function batchDelete(): Promise<void> {
+  const count = selectedIds.value.length
+  if (!count) return
+  try {
+    await ElMessageBox.confirm(
+      `将 ${count} 张照片移入回收站，可在「回收站」页面恢复。`,
+      '批量删除',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return }
+  batchDeleting.value = true
+  try {
+    const { data } = await axios.post('/api/v1/photos/batch-delete', { ids: selectedIds.value })
+    // Remove from local store immediately
+    const deletedSet = new Set(selectedIds.value)
+    photoStore.photos = photoStore.photos.filter((p) => !deletedSet.has(p.id))
+    selectedIds.value = []
+    selectMode.value = false
+    showToast(`已移入回收站：${data.deleted} 张`)
+  } catch {
+    ElMessage.error('批量删除失败，请重试')
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
 // ── Infinite scroll ───────────────────────────────────────────────────
 const sentinel = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
@@ -794,6 +828,7 @@ const searchMode   = ref<'nl' | 'clip'>('nl')
 // ── Multi-select & transfer ───────────────────────────────────────────────────
 const selectMode       = ref(false)
 const selectedIds      = ref<number[]>([])
+const batchDeleting    = ref(false)
 const showExportDialog = ref(false)
 const showImportDialog = ref(false)
 

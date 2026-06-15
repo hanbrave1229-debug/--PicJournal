@@ -159,6 +159,28 @@ async def delete_photo(
     return {"id": photo_id, "deleted": True}
 
 
+class BatchDeleteRequest(BaseModel):
+    ids: list[int]
+
+
+@router.post("/batch-delete", summary="Soft-delete multiple photos")
+async def batch_delete_photos(
+    body: BatchDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Soft-delete up to 500 photos in one call. Returns count of deleted rows."""
+    if not body.ids:
+        return {"deleted": 0}
+    if len(body.ids) > 500:
+        raise HTTPException(status_code=400, detail="最多一次删除 500 张")
+    deleted = 0
+    for photo_id in body.ids:
+        photo = await soft_delete_photo(photo_id, db)
+        if photo:
+            deleted += 1
+    return {"deleted": deleted}
+
+
 # ── XMP sidecar ───────────────────────────────────────────────────────────────
 
 class XmpWriteRequest(BaseModel):
