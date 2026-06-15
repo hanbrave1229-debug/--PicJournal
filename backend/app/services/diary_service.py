@@ -240,19 +240,19 @@ async def generate_ai_draft(
     # Call LLM
     effective_base = (base_url.rstrip("/") if base_url else "https://api.openai.com/v1")
     url = effective_base + "/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
+    if api_key:  # 本地模型可无 key
+        headers["Authorization"] = f"Bearer {api_key}"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 400,
+        "max_tokens": 1200,   # 400 会把日记从中间截断 → 文案显示不全
         "temperature": 0.85,
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        # trust_env=False：忽略 NAS 全局代理，直连本地/自建模型端点
+        async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
             r = await client.post(url, headers=headers, json=payload)
         r.raise_for_status()
         data = r.json()
