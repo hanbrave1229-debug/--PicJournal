@@ -20,6 +20,24 @@ html, body, #app {
 
 * { scroll-behavior: smooth; }
 
+// ── Element Plus 按钮间距 ─────────────────────────────────────────────────
+// 按钮组默认是「连体」（内部按钮负边距 + 去圆角），改为 4px 间距、各自独立圆角。
+.el-button-group {
+  display: inline-flex;
+  gap: 4px;
+
+  > .el-button,
+  > .el-button.is-round,
+  > .el-dropdown > .el-button {
+    margin-left: 0 !important;
+    border-radius: var(--el-border-radius-base) !important;
+  }
+}
+// 普通相邻按钮统一 4px（Element Plus 默认是 12px，过宽）
+.el-button + .el-button {
+  margin-left: 4px;
+}
+
 // ── Typography utilities ──────────────────────────────────────────────────
 .page-title {
   font-size: 24px;

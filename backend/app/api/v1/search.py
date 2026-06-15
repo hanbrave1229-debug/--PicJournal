@@ -24,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.models.photo import Photo
 from app.schemas.photo import PhotoListResponse, PhotoResponse
-from app.services.config_service import get_config
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -112,21 +111,21 @@ Rules:
 
 async def _nl_to_dsl(query: str, api_key: str, base_url: str, model: str) -> SearchDSL:
     url = (base_url.rstrip("/") if base_url else "https://api.openai.com/v1") + "/chat/completions"
+    # 合并 system 到 user，兼容不支持 system role 的本地模型
     payload = {
         "model": model,
         "max_tokens": 512,
         "temperature": 0,
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": f"Search query: {query}"},
+            {"role": "user", "content": _SYSTEM_PROMPT + f"\n\nSearch query: {query}"},
         ],
     }
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-        )
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    # trust_env=False：忽略 NAS 全局代理，直连本地/自建模型端点
+    async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
+        resp = await client.post(url, headers=headers, json=payload)
     resp.raise_for_status()
     raw: str = resp.json()["choices"][0]["message"]["content"].strip()
 
@@ -202,19 +201,30 @@ async def nl_search(
     if body.limit < 1 or body.limit > 200:
         raise HTTPException(status_code=400, detail="limit 需在 1–200 之间")
 
-    cfg = await get_config(db)
-    if not cfg.ai_api_key:
+    # Use the active multi-model config (same system as 打标 / 日记主笔).
+    from app.models.ai_model_config import AiModelConfig
+    from app.services.crypto import decrypt as crypto_decrypt
+
+    active = (await db.execute(
+        sa_select(AiModelConfig).where(AiModelConfig.is_active.is_(True))
+    )).scalar_one_or_none()
+    if not active:
         raise HTTPException(
             status_code=400,
-            detail="AI API Key 未配置，请前往「智能设置」完成配置后再使用自然语言搜索",
+            detail="未选择 AI 模型配置，请前往「智能设置」激活一个配置后再使用自然语言搜索",
         )
-
-    model    = cfg.ai_model or "gpt-4o-mini"
-    base_url = cfg.ai_base_url or ""
+    api_key  = crypto_decrypt(active.api_key_enc) if active.api_key_enc else ""
+    base_url = active.base_url or ""
+    model    = active.model or "gpt-4o-mini"
+    if not base_url:  # 本地模型无需 key，但必须有 base_url
+        raise HTTPException(
+            status_code=400,
+            detail=f"配置「{active.name}」缺少 Base URL，请在设置页补充",
+        )
 
     # Step 1: NL → validated DSL (never raw SQL)
     try:
-        dsl = await _nl_to_dsl(body.query, cfg.ai_api_key, base_url, model)
+        dsl = await _nl_to_dsl(body.query, api_key, base_url, model)
     except (httpx.HTTPStatusError, httpx.RequestError) as exc:
         logger.error("NL search LLM call failed: %s", exc)
         raise HTTPException(status_code=502, detail=f"AI 接口请求失败: {exc}")

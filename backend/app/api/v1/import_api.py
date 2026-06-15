@@ -377,6 +377,7 @@ async def import_history(
     import_dir is not configured.
     """
     from app.config import get_settings as _gs
+    from sqlalchemy import func
     import_base = _gs().import_dir  # e.g. /app/data/imported
 
     stmt = (
@@ -386,7 +387,6 @@ async def import_history(
     )
     total_stmt = select(func.count(ScanTask.id)).where(ScanTask.scan_path.like(f"{import_base}%"))
 
-    from sqlalchemy import func
     total: int = (await db.execute(total_stmt)).scalar_one()
     rows = (await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))).scalars().all()
 
