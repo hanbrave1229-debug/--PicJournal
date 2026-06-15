@@ -164,18 +164,16 @@ async def start_tag_photos(
     if not photos:
         return {"started": False, "reason": "没有需要打标的照片"}
 
-    # Run in background — use a fresh session so the endpoint can return
+    # Run in background; run_batch_tagging opens its own per-task sessions.
+    photo_ids = [p.id for p in photos]
+
     async def _bg() -> None:
         async with AsyncSessionLocal() as bg_db:
-            # Re-fetch photos in the new session
-            r = await bg_db.execute(
-                select(Photo).where(Photo.id.in_([p.id for p in photos]))
-            )
+            r = await bg_db.execute(select(Photo).where(Photo.id.in_(photo_ids)))
             bg_photos = list(r.scalars().all())
-            await ai_tagger.run_batch_tagging(
-                bg_photos, bg_db, api_key, base_url, model,
-                concurrency=vlm_concurrency,
-            )
+        await ai_tagger.run_batch_tagging(
+            bg_photos, api_key, base_url, model, concurrency=vlm_concurrency,
+        )
 
     asyncio.create_task(_bg())
 

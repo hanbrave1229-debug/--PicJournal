@@ -133,6 +133,7 @@ async def _scan_then_auto_tag(task_id: int, scan_path: str) -> None:
             api_key  = cfg.ai_api_key
             base_url = cfg.ai_base_url or ""
             model    = cfg.ai_model or "gpt-4o-mini"
+            concurrency = getattr(cfg, "vlm_concurrency", 1) or 1
 
         # Step 4: fetch untagged photos in a fresh session and run tagging
         async with AsyncSessionLocal() as tag_db:
@@ -149,12 +150,10 @@ async def _scan_then_auto_tag(task_id: int, scan_path: str) -> None:
             return
 
         logger.info("auto_tag: tagging %d photos after scan", len(photos))
-        async with AsyncSessionLocal() as tag_db:
-            result = await tag_db.execute(
-                select(Photo).where(Photo.id.in_([p.id for p in photos]))
-            )
-            fresh_photos = list(result.scalars().all())
-            await ai_tagger.run_batch_tagging(fresh_photos, tag_db, api_key, base_url, model)
+        # run_batch_tagging opens its own per-task sessions (concurrency-safe).
+        await ai_tagger.run_batch_tagging(
+            photos, api_key, base_url, model, concurrency=concurrency,
+        )
 
     except Exception:
         logger.exception("auto_tag: unexpected error during post-scan tagging")

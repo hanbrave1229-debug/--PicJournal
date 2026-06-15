@@ -257,16 +257,21 @@ async def tag_single_photo(
 
 async def run_batch_tagging(
     photos: list[Photo],
-    db: AsyncSession,
     api_key: str,
     base_url: str,
     model: str,
-    concurrency: int = 2,
+    concurrency: int = 1,
 ) -> None:
     """
     Tag all photos in *photos* with up to *concurrency* parallel VLM calls.
     Updates the module-level `progress` singleton throughout.
+
+    Each concurrent task uses its OWN database session — an AsyncSession must
+    never be shared across concurrent coroutines (it is not concurrency-safe;
+    sharing one corrupts its state and triggers "database is locked").
     """
+    from app.db.database import AsyncSessionLocal
+
     global progress
     progress.running = True
     progress.total = len(photos)
@@ -274,12 +279,19 @@ async def run_batch_tagging(
     progress.failed = 0
     progress.error = None
 
-    sem = asyncio.Semaphore(concurrency)
+    # Capture ids up front; the caller's session/objects are not reused here.
+    photo_ids = [p.id for p in photos]
+    sem = asyncio.Semaphore(max(1, concurrency))
 
-    async def _tag_one(photo: Photo) -> None:
+    async def _tag_one(pid: int) -> None:
         async with sem:
-            progress.current_file = photo.file_name
-            ok = await tag_single_photo(photo, db, api_key, base_url, model)
+            async with AsyncSessionLocal() as task_db:
+                photo = await task_db.get(Photo, pid)
+                if photo is None:
+                    progress.failed += 1
+                    return
+                progress.current_file = photo.file_name
+                ok = await tag_single_photo(photo, task_db, api_key, base_url, model)
             if ok:
                 progress.done += 1
                 progress.last_failure = None  # clear on success streak
@@ -287,7 +299,7 @@ async def run_batch_tagging(
                 progress.failed += 1
 
     try:
-        await asyncio.gather(*[_tag_one(p) for p in photos])
+        await asyncio.gather(*[_tag_one(pid) for pid in photo_ids])
     except Exception as exc:
         progress.error = str(exc)
         logger.exception("Batch tagging failed: %s", exc)
