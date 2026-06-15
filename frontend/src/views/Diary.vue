@@ -7,20 +7,35 @@
         <p class="diary-subtitle">用照片刻录岁月，AI 替你执笔生活。</p>
       </div>
       <div class="diary-nav">
-        <span class="diary-month-label">{{ currentYear }} 年 {{ currentMonth }} 月</span>
-        <el-button-group>
-          <el-button size="small" plain @click="prevMonth">
-            <el-icon><ArrowLeft /></el-icon>
+        <!-- View toggle -->
+        <el-button-group size="small" style="margin-right:8px">
+          <el-button :type="viewMode === 'calendar' ? 'primary' : ''" plain @click="switchView('calendar')">
+            <el-icon><Grid /></el-icon>
           </el-button>
-          <el-button size="small" plain @click="goToday">今天</el-button>
-          <el-button size="small" plain @click="nextMonth">
-            <el-icon><ArrowRight /></el-icon>
+          <el-button :type="viewMode === 'timeline' ? 'primary' : ''" plain @click="switchView('timeline')">
+            <el-icon><List /></el-icon>
           </el-button>
         </el-button-group>
+        <template v-if="viewMode === 'calendar'">
+          <span class="diary-month-label">{{ currentYear }} 年 {{ currentMonth }} 月</span>
+          <el-button-group>
+            <el-button size="small" plain @click="prevMonth">
+              <el-icon><ArrowLeft /></el-icon>
+            </el-button>
+            <el-button size="small" plain @click="goToday">今天</el-button>
+            <el-button size="small" plain @click="nextMonth">
+              <el-icon><ArrowRight /></el-icon>
+            </el-button>
+          </el-button-group>
+        </template>
+        <template v-else>
+          <span class="diary-month-label">全部日记（{{ timelineTotal }} 篇）</span>
+        </template>
       </div>
     </div>
 
-    <!-- ── Calendar grid ───────────────────────────────────────────────────── -->
+    <!-- ── Calendar view ─────────────────────────────────────────────────── -->
+    <template v-if="viewMode === 'calendar'">
     <div class="calendar-weekdays">
       <div v-for="d in WEEKDAYS" :key="d">{{ d }}</div>
     </div>
@@ -76,6 +91,31 @@
         </template>
       </div>
     </div>
+    </template>
+
+    <!-- ── Timeline view ──────────────────────────────────────────────────── -->
+    <template v-else>
+      <div v-loading="timelineLoading && !timelineItems.length" class="diary-timeline">
+        <div v-if="!timelineLoading && !timelineItems.length" class="diary-timeline-empty">
+          <el-icon size="40"><EditPen /></el-icon>
+          <p>还没有日记，去日历视图写第一篇吧</p>
+        </div>
+        <div v-for="entry in timelineItems" :key="entry.id" class="tl-card" @click="switchView('calendar')">
+          <div class="tl-cover" :style="entry.cover_thumbnail_url ? { backgroundImage: `url(${entry.cover_thumbnail_url})` } : {}">
+            <div v-if="!entry.cover_thumbnail_url" class="tl-cover-ph"><el-icon size="28"><Picture /></el-icon></div>
+            <div class="tl-cover-overlay" />
+            <span class="tl-mood">{{ getMoodEmoji(entry.mood) }}</span>
+          </div>
+          <div class="tl-body">
+            <div class="tl-date">{{ entry.diary_date }}</div>
+            <p class="tl-content">{{ entry.content ? entry.content.slice(0, 120) + (entry.content.length > 120 ? '…' : '') : '（无内容）' }}</p>
+          </div>
+        </div>
+        <div v-if="timelineItems.length < timelineTotal" class="tl-load-more">
+          <el-button :loading="timelineLoading" @click="timelineLoadMore">加载更多</el-button>
+        </div>
+      </div>
+    </template>
 
     <!-- ── Write-diary Dialog ──────────────────────────────────────────────── -->
     <el-dialog
@@ -290,8 +330,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import axios from 'axios'
 import {
-  ArrowLeft, ArrowRight, Check, Close, EditPen, MagicStick, Picture,
+  ArrowLeft, ArrowRight, Check, Close, EditPen, List, Grid, MagicStick, Picture,
 } from '@element-plus/icons-vue'
 import { diaryApi } from '@/api/diary'
 import { photoApi } from '@/api/photos'
@@ -317,6 +358,43 @@ const MOOD_EMOJI_MAP = Object.fromEntries(MOODS.map(m => [m.name, m.emoji])) as 
 const now = new Date()
 const currentYear  = ref(now.getFullYear())
 const currentMonth = ref(now.getMonth() + 1)
+
+// ── View mode: calendar | timeline ────────────────────────────────────────────
+const viewMode = ref<'calendar' | 'timeline'>('calendar')
+
+interface TimelineEntry {
+  id: number; diary_date: string; mood: string
+  content: string | null; cover_thumbnail_url: string | null
+}
+const timelineItems = ref<TimelineEntry[]>([])
+const timelineTotal = ref(0)
+const timelinePage  = ref(1)
+const timelineLoading = ref(false)
+
+async function loadTimeline(reset = false) {
+  if (reset) { timelinePage.value = 1; timelineItems.value = [] }
+  timelineLoading.value = true
+  try {
+    const { data } = await axios.get('/api/v1/diaries/list', {
+      params: { page: timelinePage.value, page_size: 20 },
+    })
+    timelineTotal.value = data.total
+    timelineItems.value = reset ? data.items : [...timelineItems.value, ...data.items]
+  } finally {
+    timelineLoading.value = false
+  }
+}
+
+function switchView(mode: 'calendar' | 'timeline') {
+  viewMode.value = mode
+  if (mode === 'timeline' && !timelineItems.value.length) loadTimeline(true)
+}
+
+function timelineLoadMore() {
+  timelinePage.value++
+  loadTimeline()
+}
+
 
 const monthEntries  = ref<Map<string, DiaryCalendarItem>>(new Map())
 const loadingMonth  = ref(false)
@@ -682,6 +760,80 @@ onMounted(() => { loadMonth() })
 }
 
 // ── Weekday row ───────────────────────────────────────────────────────────────
+// ── Timeline ─────────────────────────────────────────────────────────────────
+.diary-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+.diary-timeline-empty {
+  text-align: center;
+  color: var(--no-text-muted);
+  padding: 60px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.tl-card {
+  display: flex;
+  gap: 0;
+  background: var(--no-bg-card);
+  border: 1px solid var(--no-border-low);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+  &:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+}
+.tl-cover {
+  width: 120px;
+  min-height: 100px;
+  flex-shrink: 0;
+  background: var(--no-bg-elevated) center/cover no-repeat;
+  position: relative;
+  .tl-cover-ph {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--no-text-muted);
+  }
+  .tl-cover-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, transparent 60%, var(--no-bg-card));
+  }
+  .tl-mood {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-size: 20px;
+  }
+}
+.tl-body {
+  flex: 1;
+  padding: 14px 16px;
+  .tl-date {
+    font-size: 12px;
+    color: var(--no-text-muted);
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tl-content {
+    font-size: 14px;
+    color: var(--no-text-primary);
+    line-height: 1.6;
+    margin: 0;
+  }
+}
+.tl-load-more {
+  text-align: center;
+  padding: 12px 0;
+}
+
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

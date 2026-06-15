@@ -17,13 +17,13 @@ import uuid
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import AsyncSessionLocal, get_db
-from app.models.scan_task import ScanTask
+from app.models.scan_task import ScanTask, ScanStatus
 from app.services import scan_service
 from app.services import album_service
 
@@ -362,4 +362,49 @@ async def import_album_from_library(
         "album_id": album.id,
         "album_name": album.title,
         "added": added,
+    }
+
+
+@router.get("/history", summary="导入历史记录")
+async def import_history(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Return paginated scan tasks that were triggered by import operations
+    (scan_path starts with import_dir). Falls back to all scan tasks if
+    import_dir is not configured.
+    """
+    from app.config import get_settings as _gs
+    import_base = _gs().import_dir  # e.g. /app/data/imported
+
+    stmt = (
+        select(ScanTask)
+        .where(ScanTask.scan_path.like(f"{import_base}%"))
+        .order_by(desc(ScanTask.created_at))
+    )
+    total_stmt = select(func.count(ScanTask.id)).where(ScanTask.scan_path.like(f"{import_base}%"))
+
+    from sqlalchemy import func
+    total: int = (await db.execute(total_stmt)).scalar_one()
+    rows = (await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))).scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": t.id,
+                "scan_path": t.scan_path,
+                "status": t.status,
+                "total_files": t.total_files,
+                "processed_files": t.processed_files,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "finished_at": t.finished_at.isoformat() if t.finished_at else None,
+                "error_message": t.error_message,
+            }
+            for t in rows
+        ],
     }

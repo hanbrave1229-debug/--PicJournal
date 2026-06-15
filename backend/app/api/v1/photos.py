@@ -10,7 +10,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -19,6 +19,28 @@ from app.schemas.photo import PhotoListResponse, PhotoResponse
 from app.services.photo_service import get_photo_by_id, list_photos, soft_delete_photo
 
 router = APIRouter()
+
+
+@router.get("/stats", summary="Photo library statistics")
+async def get_photo_stats(db: AsyncSession = Depends(get_db)) -> dict:
+    """Return total, tagged, video, and duplicate counts for the active library."""
+    base = select(func.count(Photo.id)).where(
+        Photo.is_deleted.is_(False), Photo.is_archived.is_(False)
+    )
+    total       = (await db.execute(base)).scalar_one()
+    tagged      = (await db.execute(base.where(Photo.ai_caption.is_not(None)))).scalar_one()
+    videos      = (await db.execute(base.where(Photo.media_type == "video"))).scalar_one()
+    duplicates  = (await db.execute(base.where(Photo.duplicate_group_id.is_not(None)))).scalar_one()
+    face_done   = (await db.execute(base.where(Photo.face_analyzed_at.is_not(None)))).scalar_one()
+    return {
+        "total": total,
+        "tagged": tagged,
+        "untagged": total - tagged,
+        "videos": videos,
+        "photos": total - videos,
+        "duplicates": duplicates,
+        "face_analyzed": face_done,
+    }
 
 
 @router.get("", response_model=PhotoListResponse, summary="List photos with pagination")

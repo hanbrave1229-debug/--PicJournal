@@ -228,6 +228,39 @@
         <!-- ── AI 批量打标 ─────────────────────────────────────────── -->
         <div class="st-section-divider">VLM 多模态批量打标</div>
 
+        <!-- Stats overview -->
+        <div v-if="photoStats" class="st-stats-bar">
+          <div class="st-stat-item">
+            <span class="st-stat-val">{{ photoStats.total }}</span>
+            <span class="st-stat-label">总照片</span>
+          </div>
+          <div class="st-stat-sep" />
+          <div class="st-stat-item st-stat-item--done">
+            <span class="st-stat-val">{{ photoStats.tagged }}</span>
+            <span class="st-stat-label">已打标</span>
+          </div>
+          <div class="st-stat-sep" />
+          <div class="st-stat-item st-stat-item--pending">
+            <span class="st-stat-val">{{ photoStats.untagged }}</span>
+            <span class="st-stat-label">未打标</span>
+          </div>
+          <div class="st-stat-sep" />
+          <div class="st-stat-item">
+            <span class="st-stat-val">{{ photoStats.face_analyzed }}</span>
+            <span class="st-stat-label">已识人脸</span>
+          </div>
+          <!-- Progress bar -->
+          <div class="st-stats-progress">
+            <div
+              class="st-stats-progress-fill"
+              :style="{ width: photoStats.total ? (photoStats.tagged / photoStats.total * 100).toFixed(1) + '%' : '0%' }"
+            />
+            <span class="st-stats-progress-pct">
+              {{ photoStats.total ? (photoStats.tagged / photoStats.total * 100).toFixed(0) : 0 }}%
+            </span>
+          </div>
+        </div>
+
         <div class="st-card st-tag-panel">
           <div class="st-row st-row--tall">
             <div class="st-row-info">
@@ -517,6 +550,28 @@
         <!-- 活跃扫描进度 -->
         <ScanProgress v-if="scanStore.activeTask" :task="scanStore.activeTask" />
 
+        <!-- 导入历史 -->
+        <div class="st-group">
+          <div class="st-group-label">导入历史</div>
+          <div class="st-card st-card--flat">
+            <div v-if="!importHistory.length" class="st-import-empty">暂无导入记录</div>
+            <el-table v-else :data="importHistory" size="small" class="st-table">
+              <el-table-column prop="scan_path" label="导入路径" min-width="180" show-overflow-tooltip />
+              <el-table-column label="状态" width="80">
+                <template #default="{ row }">
+                  <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="文件数" width="90">
+                <template #default="{ row }">{{ row.processed_files }} / {{ row.total_files }}</template>
+              </el-table-column>
+              <el-table-column label="时间" width="150">
+                <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
       </div>
     </Transition>
 
@@ -750,9 +805,20 @@ const { connect } = useScanWebSocket()
 const newPath = ref('/photos')
 const scanning = ref(false)
 
+// ── Import history ────────────────────────────────────────────────────────────
+const importHistory = ref<any[]>([])
+async function loadImportHistory() {
+  try {
+    const { data } = await axios.get('/api/v1/import/history', { params: { page: 1, page_size: 20 } })
+    importHistory.value = data.items
+  } catch { /* ignore */ }
+}
+
 onMounted(() => {
   scanStore.fetchTasks()
   loadAiConfigs()
+  loadPhotoStats()
+  loadImportHistory()
   // Restore progress if a tagging task was running before page reload
   pollTagStatus().then(() => {
     if (tagRunning.value && !tagPollTimer) {
@@ -894,6 +960,19 @@ interface TagStatus {
   last_failure: string | null
 }
 
+// ── Photo stats ───────────────────────────────────────────────────────────────
+interface PhotoStats {
+  total: number; tagged: number; untagged: number
+  videos: number; photos: number; duplicates: number; face_analyzed: number
+}
+const photoStats = ref<PhotoStats | null>(null)
+async function loadPhotoStats() {
+  try {
+    const { data } = await axios.get<PhotoStats>('/api/v1/photos/stats')
+    photoStats.value = data
+  } catch { /* ignore */ }
+}
+
 const tagLimit  = ref(50)
 const tagRunning = ref(false)
 const tagStatus  = ref<TagStatus>({
@@ -928,6 +1007,7 @@ async function pollTagStatus(): Promise<void> {
         } else {
           ElMessage.success(`打标完成：成功 ${data.done} 张`)
         }
+        loadPhotoStats()  // refresh coverage stats
       }
     }
   } catch {
@@ -1078,6 +1158,13 @@ async function xmpShowConflicts() {
 // ── Group (section with label) ────────────────────────────────────────────────
 .st-group {
   margin-bottom: 28px;
+}
+
+.st-import-empty {
+  font-size: 13px;
+  color: var(--no-text-muted);
+  padding: 16px;
+  text-align: center;
 }
 
 .st-group-label {
@@ -1404,6 +1491,66 @@ async function xmpShowConflicts() {
   margin: 0 0 16px;
   padding-top: 8px;
   border-top: 1px solid var(--no-border-low);
+}
+
+// ── Photo stats bar ──────────────────────────────────────────────────────────
+.st-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--no-bg-card);
+  border: 1px solid var(--no-border-low);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.st-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+  .st-stat-val {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--no-text-primary);
+  }
+  .st-stat-label {
+    font-size: 10px;
+    color: var(--no-text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+  }
+  &.st-stat-item--done .st-stat-val { color: #10b981; }
+  &.st-stat-item--pending .st-stat-val { color: var(--no-text-secondary); }
+}
+.st-stat-sep {
+  width: 1px;
+  height: 32px;
+  background: var(--no-border-low);
+}
+.st-stats-progress {
+  flex: 1;
+  min-width: 100px;
+  position: relative;
+  height: 6px;
+  background: var(--no-bg-elevated);
+  border-radius: 3px;
+  overflow: hidden;
+  .st-stats-progress-fill {
+    height: 100%;
+    background: #10b981;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .st-stats-progress-pct {
+    position: absolute;
+    right: 0;
+    top: -18px;
+    font-size: 11px;
+    color: var(--no-text-muted);
+  }
 }
 
 // ── AI Tagging panel ─────────────────────────────────────────────────────────
