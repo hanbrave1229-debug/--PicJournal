@@ -1004,7 +1004,7 @@ onMounted(() => { loadMonth() })
 .dialog-body {
   display: flex;
   gap: 24px;
-  height: 500px;
+  height: min(620px, 74vh);   /* 自适应高度，长日记有更多展示空间 */
 }
 
 // ── Left: photo panel ─────────────────────────────────────────────────────────
@@ -1239,11 +1239,12 @@ onMounted(() => { loadMonth() })
   font-family: "Kaiti SC", "STKaiti", "KaiTi", "Brush Script MT", cursive, var(--no-font-base);
   padding: 4px;
   box-sizing: border-box;
+  overflow-y: auto;   /* 长文案可滚动，避免被裁剪 */
 
   &::placeholder { color: var(--no-text-disabled); font-family: var(--no-font-base); }
 
-  &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-thumb { background: var(--no-border-mid); border-radius: 2px; }
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-thumb { background: var(--no-border-mid); border-radius: 4px; }
 }
 
 // Generating overlay
