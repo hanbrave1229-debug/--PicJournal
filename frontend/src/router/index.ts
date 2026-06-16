@@ -4,6 +4,11 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/Login.vue'),
+    },
+    {
       path: '/',
       name: 'dashboard',
       component: () => import('@/views/Dashboard.vue'),
@@ -74,6 +79,20 @@ const router = createRouter({
       component: () => import('@/views/Places.vue'),
     },
   ],
+})
+
+// Global guard: every route except /login requires a token. The token's real
+// validity is enforced server-side; this just gates the UI and redirects.
+router.beforeEach((to) => {
+  const token = localStorage.getItem('picjournal_token')
+  if (to.name === 'login') {
+    // Already logged in? Skip the login page.
+    return token ? { path: '/' } : true
+  }
+  if (!token) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  return true
 })
 
 export default router

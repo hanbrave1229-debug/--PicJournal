@@ -1,5 +1,9 @@
 <template>
   <el-config-provider :locale="zhCn">
+    <!-- Auth pages (login / first-deploy setup) render without the app shell -->
+    <router-view v-if="isAuthRoute" />
+
+    <template v-else>
     <el-container class="app-layout">
       <!-- ── Sidebar (desktop only) ────────────────────────────── -->
       <el-aside width="220px" class="app-aside">
@@ -134,6 +138,7 @@
         <span>设置</span>
       </router-link>
     </nav>
+    </template>
   </el-config-provider>
 </template>
 
@@ -144,6 +149,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 const route = useRoute()
 const currentRoute = computed(() => route.path)
+const isAuthRoute = computed(() => route.name === 'login')
 </script>
 
 <style lang="scss">

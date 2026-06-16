@@ -4,11 +4,12 @@ from app.api.v1 import (
     scan, photos, duplicates, thumbnails, scoring, dashboard,
     persons, albums, trash, config, diary, search, archive,
     geocoding, semantic, stacks, export_api, import_api, vision_api,
-    ai_configs_api, videos, xmp_sync,
+    ai_configs_api, videos, xmp_sync, auth,
 )
 
 router = APIRouter()
 
+router.include_router(auth.router,       prefix="/auth",       tags=["auth"])
 router.include_router(scan.router,       prefix="/scan",       tags=["scan"])
 router.include_router(photos.router,     prefix="/photos",     tags=["photos"])
 router.include_router(duplicates.router, prefix="/duplicates", tags=["duplicates"])

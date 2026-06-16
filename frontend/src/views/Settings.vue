@@ -584,6 +584,35 @@
       </div>
     </Transition>
 
+    <!-- ── 账号安全 ────────────────────────────────────────────────────── -->
+    <Transition name="st-fade">
+      <div v-if="activeTab === 'account'" class="st-panel">
+        <div class="st-account-card">
+          <div class="st-account-head">
+            <div>
+              <div class="st-account-name">{{ auth.user?.username || '当前账号' }}</div>
+              <div class="st-account-role">{{ auth.user?.role === 'admin' ? '管理员' : '普通用户' }}</div>
+            </div>
+            <el-button @click="onLogout">退出登录</el-button>
+          </div>
+
+          <h3 class="st-account-subtitle">修改密码</h3>
+          <el-form label-position="top" class="st-account-form">
+            <el-form-item label="原密码">
+              <el-input v-model="pwdForm.old" type="password" show-password placeholder="请输入原密码" />
+            </el-form-item>
+            <el-form-item label="新密码">
+              <el-input v-model="pwdForm.new1" type="password" show-password placeholder="至少 6 位" />
+            </el-form-item>
+            <el-form-item label="确认新密码">
+              <el-input v-model="pwdForm.new2" type="password" show-password placeholder="再次输入新密码" />
+            </el-form-item>
+            <el-button type="primary" :loading="pwdSaving" @click="onChangePassword">保存新密码</el-button>
+          </el-form>
+        </div>
+      </div>
+    </Transition>
+
     <!-- ── 共享管理 ────────────────────────────────────────────────────── -->
     <Transition name="st-fade">
       <div v-if="activeTab === 'share'" class="st-panel st-coming-soon">
@@ -620,6 +649,49 @@ import axios from 'axios'
 import { configApi } from '@/api/config'
 import { PROVIDERS } from '@/types/config'
 import type { AIProvider, ConnectionTestResponse } from '@/types/config'
+import { useRouter } from 'vue-router'
+import { authApi } from '@/api/auth'
+import { useAuthStore } from '@/stores/useAuthStore'
+
+// ── 账号安全 ───────────────────────────────────────────────────────────────────
+const router = useRouter()
+const auth = useAuthStore()
+const pwdForm = reactive({ old: '', new1: '', new2: '' })
+const pwdSaving = ref(false)
+
+onMounted(() => {
+  if (!auth.user) auth.fetchMe().catch(() => {})
+})
+
+async function onChangePassword() {
+  if (!pwdForm.old || !pwdForm.new1) {
+    ElMessage.warning('请填写原密码和新密码')
+    return
+  }
+  if (pwdForm.new1.length < 6) {
+    ElMessage.warning('新密码至少 6 位')
+    return
+  }
+  if (pwdForm.new1 !== pwdForm.new2) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
+  pwdSaving.value = true
+  try {
+    await authApi.changePassword(pwdForm.old, pwdForm.new1)
+    ElMessage.success('密码已修改')
+    pwdForm.old = pwdForm.new1 = pwdForm.new2 = ''
+  } catch {
+    /* error toast handled by axios interceptor */
+  } finally {
+    pwdSaving.value = false
+  }
+}
+
+async function onLogout() {
+  await auth.logout()
+  router.replace('/login')
+}
 
 // ── AI 多配置管理 ───────────────────────────────────────────────────────────────
 
@@ -774,6 +846,7 @@ const TABS = [
   { id: 'general',  name: '通用设置' },
   { id: 'ai',       name: '智能设置' },
   { id: 'folders',  name: '文件夹范围' },
+  { id: 'account',  name: '账号安全' },
   { id: 'share',    name: '共享管理' },
   { id: 'friends',  name: '好友上传管理' },
 ] as const
@@ -1721,4 +1794,25 @@ async function xmpShowConflicts() {
 // ── Fade transition ───────────────────────────────────────────────────────────
 .st-fade-enter-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .st-fade-enter-from   { opacity: 0; transform: translateY(5px); }
+
+// ── 账号安全 ───────────────────────────────────────────────────────────────────
+.st-account-card {
+  max-width: 460px;
+  background: var(--no-bg-card);
+  border: 1px solid var(--no-border-low);
+  border-radius: 12px;
+  padding: 24px;
+}
+.st-account-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--no-border-low);
+}
+.st-account-name { font-size: 16px; font-weight: 600; color: var(--no-text-primary); }
+.st-account-role { font-size: 12px; color: var(--no-text-muted); margin-top: 2px; }
+.st-account-subtitle { font-size: 14px; font-weight: 600; margin: 0 0 14px; color: var(--no-text-primary); }
+.st-account-form { display: flex; flex-direction: column; }
 </style>

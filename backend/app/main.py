@@ -6,8 +6,9 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
@@ -108,6 +109,40 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Auth enforcement ───────────────────────────────────────────────────────────
+# Every /api/v1/* route requires a valid JWT (header or cookie), except the
+# auth bootstrap endpoints and API docs. JWT verification is stateless, so this
+# middleware needs no DB access — it only checks the signature and expiry.
+_AUTH_WHITELIST = {
+    "/api/v1/auth/login",
+    "/api/v1/auth/setup",
+    "/api/v1/auth/setup-status",
+    "/api/v1/auth/logout",
+    "/health",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+}
+
+
+@app.middleware("http")
+async def enforce_auth(request: Request, call_next):
+    path = request.url.path
+    # Let CORS preflight through; only guard the API namespace.
+    if request.method == "OPTIONS" or not path.startswith("/api/v1/"):
+        return await call_next(request)
+    if path in _AUTH_WHITELIST:
+        return await call_next(request)
+
+    from app.core.auth_deps import extract_token
+    from app.services import auth_service
+
+    token = extract_token(request)
+    if not token or auth_service.decode_token(token) is None:
+        return JSONResponse(status_code=401, content={"detail": "未登录或登录已过期"})
+    return await call_next(request)
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(api_v1_router, prefix="/api/v1")
