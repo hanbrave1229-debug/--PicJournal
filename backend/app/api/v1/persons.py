@@ -188,7 +188,7 @@ async def get_person_photos(
         total=data["total"],
         page=data["page"],
         page_size=data["page_size"],
-        items=[PhotoResponse.model_validate(p, from_attributes=True) for p in data["items"]],
+        items=[PhotoResponse.from_orm(p) for p in data["items"]],
     )
 
 

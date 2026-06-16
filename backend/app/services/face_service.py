@@ -242,6 +242,7 @@ async def _pipeline(force: bool) -> FaceRunResponse:
 
         persons_created = 0
         persons_updated = 0
+        new_person_ids: list[int] = []
 
         for face in new_clustered:
             label = face["cluster_label"]
@@ -254,6 +255,7 @@ async def _pipeline(force: bool) -> FaceRunResponse:
                 session.add(person)
                 await session.flush()  # get ID
                 label_to_person_id[label] = person.id
+                new_person_ids.append(person.id)
                 persons_created += 1
             else:
                 # Face joins an existing (or just-created) person.
@@ -347,12 +349,27 @@ async def _pipeline(force: bool) -> FaceRunResponse:
         face_min, prune_result["persons_deleted"], prune_result["crops_deleted"],
     )
 
+    # Report only the new persons that survived pruning, so the stat matches
+    # what actually shows up in the /persons list.
+    persons_created_surviving = persons_created
+    if new_person_ids:
+        async with AsyncSessionLocal() as session:
+            persons_created_surviving = (
+                await session.execute(
+                    select(func.count(Person.id)).where(Person.id.in_(new_person_ids))
+                )
+            ).scalar_one()
+
     return FaceRunResponse(
         photos_processed=len(rows),
         faces_detected=len(all_faces),
-        persons_created=persons_created,
+        persons_created=persons_created_surviving,
         persons_updated=persons_updated,
-        message=f"完成：{len(rows)} 张照片，检测到 {len(all_faces)} 张人脸，识别 {persons_created} 位人物（已自动清理 {prune_result['persons_deleted']} 个低频人物）",
+        message=(
+            f"完成：{len(rows)} 张照片，检测到 {len(all_faces)} 张人脸，"
+            f"新增 {persons_created_surviving} 位人物"
+            + (f"（已自动清理 {prune_result['persons_deleted']} 个低频人物）" if prune_result["persons_deleted"] else "")
+        ),
     )
 
 
