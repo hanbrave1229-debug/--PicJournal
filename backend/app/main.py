@@ -88,10 +88,18 @@ def _check_db_not_on_network_mount() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize DB tables on startup."""
+    """Initialize DB tables on startup, then launch the periodic auto-scan loop."""
+    import asyncio
+    from app.services.scan_service import run_auto_scan_loop
+
     _check_db_not_on_network_mount()
     await init_db()
-    yield
+
+    auto_scan_task = asyncio.create_task(run_auto_scan_loop(), name="auto-scan-loop")
+    try:
+        yield
+    finally:
+        auto_scan_task.cancel()
 
 
 app = FastAPI(

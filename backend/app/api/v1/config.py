@@ -30,6 +30,8 @@ async def get_config(db: AsyncSession = Depends(get_db)):
         ai_batch_size=cfg.ai_batch_size,
         face_min_photos=cfg.face_min_photos,
         vlm_concurrency=cfg.vlm_concurrency,
+        auto_scan_enabled=cfg.auto_scan_enabled,
+        auto_scan_interval_minutes=cfg.auto_scan_interval_minutes,
     )
 
 
@@ -51,6 +53,8 @@ async def update_config(
         ai_batch_size=cfg.ai_batch_size,
         face_min_photos=cfg.face_min_photos,
         vlm_concurrency=cfg.vlm_concurrency,
+        auto_scan_enabled=cfg.auto_scan_enabled,
+        auto_scan_interval_minutes=cfg.auto_scan_interval_minutes,
     )
 
 

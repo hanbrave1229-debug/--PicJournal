@@ -114,7 +114,7 @@ async def scan_progress_ws(task_id: int, websocket: WebSocket) -> None:
 
 @router.post("/tag-photos", summary="Start AI batch tagging")
 async def start_tag_photos(
-    limit: int = Query(default=50, ge=1, le=500, description="Max photos to tag per run"),
+    limit: int = Query(default=50, ge=1, le=1000, description="Max photos to tag per run"),
     retag: bool = Query(default=False, description="Re-tag photos that already have captions"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:

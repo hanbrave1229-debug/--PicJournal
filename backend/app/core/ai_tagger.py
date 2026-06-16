@@ -35,16 +35,42 @@ settings = get_settings()
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = (
-    "You are a photo analysis assistant. Look at the actual image content and "
-    "respond ONLY with valid JSON, no markdown, no explanation, no placeholders. "
-    "The JSON must have exactly two keys: \"caption\" (one Chinese sentence describing "
-    "what is actually in the photo) and \"tags\" (a JSON array of up to 8 concise Chinese "
-    "keywords describing the photo). "
-    "Example of the exact format (do NOT reuse this content, describe the real image instead): "
-    '{"caption": "夕阳下的海边沙滩，几只海鸥在飞翔", "tags": ["海滩", "夕阳", "海鸥", "大海"]}'
+    "请详细描述这张图片，包括：\n"
+    "1. 主体内容（人物/动物/物体及其特征）\n"
+    "2. 场景环境（室内外、地点、背景）\n"
+    "3. 颜色、光线、氛围\n"
+    "4. 如有文字，请准确识别\n"
+    "5. 整体风格或情绪\n"
+    "用中文输出，描述要具体准确。\n"
+    "最后另起一行，以「关键词：」开头，给出最多 8 个用顿号分隔的中文关键词。"
 )
 
-_USER_PROMPT = "Describe this photo."
+_USER_PROMPT = ""
+
+
+def _parse_description(raw: str) -> tuple[str, list[str]]:
+    """
+    Split a free-form Chinese description into (caption, tags).
+
+    The model is asked to end with a line like「关键词：猫、窗台、傍晚」. If present,
+    that line is pulled out as tags and removed from the caption. If absent,
+    the whole text is the caption and tags is empty — never an error.
+    """
+    import re as _re
+
+    tags: list[str] = []
+    caption = raw.strip()
+
+    m = _re.search(r"关\s*键\s*词\s*[:：]\s*(.+)\s*$", caption, _re.MULTILINE)
+    if m:
+        kw_line = m.group(1).strip()
+        # 支持顿号/逗号/分号/空格分隔
+        parts = _re.split(r"[、,，;；\s]+", kw_line)
+        tags = [t.strip().lstrip("#").strip() for t in parts if t.strip()][:8]
+        # 从正文中移除关键词行
+        caption = caption[: m.start()].rstrip()
+
+    return caption, tags
 
 
 # ── In-memory progress tracker ────────────────────────────────────────────────
@@ -180,9 +206,8 @@ async def tag_single_photo(
     )
     payload = {
         "model": model,
-        "max_tokens": 512,
-        "temperature": 0.2,
-        "response_format": {"type": "json_object"},
+        "max_tokens": 1024,  # 详细描述更长，避免 caption 被截断
+        "temperature": 0.4,
         "messages": [
             {
                 "role": "user",
@@ -203,11 +228,6 @@ async def tag_single_photo(
         # instead of being routed through the host's global proxy.
         async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
             resp = await client.post(url, headers=headers, json=payload)
-            if not resp.is_success and "response_format" in resp.text:
-                # Backend doesn't support response_format (e.g. some LM Studio
-                # builds) — retry once without it.
-                payload.pop("response_format", None)
-                resp = await client.post(url, headers=headers, json=payload)
         if not resp.is_success:
             err_body = resp.text[:300]
             logger.error(
@@ -217,42 +237,16 @@ async def tag_single_photo(
             return False
 
         msg = resp.json()["choices"][0]["message"]
-        content_text = msg.get("content") or ""
-        reasoning_text = msg.get("reasoning_content") or ""
+        # 推理模型可能 content 为 null，真正内容在 reasoning_content
+        raw = (msg.get("content") or msg.get("reasoning_content") or "").strip()
+        if not raw:
+            progress.last_failure = f"模型返回为空: id={photo.id}"
+            return False
 
         import re as _re
 
-        def _extract_json_obj(text: str) -> dict | None:
-            # Try all top-level {...} blocks (last first — model puts answer at end)
-            for m in reversed(list(_re.finditer(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}", text, _re.DOTALL))):
-                try:
-                    d = json.loads(m.group(0))
-                    if "caption" in d or "tags" in d:
-                        return d
-                except Exception:
-                    pass
-            # Greedy fallback: outermost {...}
-            m = _re.search(r"\{.*\}", text, _re.DOTALL)
-            if m:
-                try:
-                    return json.loads(m.group(0))
-                except Exception:
-                    pass
-            return None
-
-        parsed = _extract_json_obj(content_text) or _extract_json_obj(reasoning_text)
-        if parsed is not None:
-            caption: str = parsed.get("caption", "")
-            tags: list[str] = parsed.get("tags", [])
-        else:
-            # Model ignored the JSON instruction and replied with free-form
-            # prose. Fall back to using that prose as the caption directly
-            # rather than discarding the photo outright.
-            raw = (content_text or reasoning_text).strip()
-            if not raw:
-                raise json.JSONDecodeError("empty response", "", 0)
-            caption = _re.sub(r"\s+", " ", raw)[:500]
-            tags = []
+        # 自由文本描述：整段作为 caption；末尾「关键词：」行（若有）抽成 tags。
+        caption, tags = _parse_description(raw)
 
         photo.ai_caption = caption[:2048] if caption else None
         photo.ai_tags = json.dumps(tags, ensure_ascii=False) if tags else None

@@ -12,6 +12,8 @@ export interface AIConfigResponse {
   ai_batch_size: number
   face_min_photos: number
   vlm_concurrency: number
+  auto_scan_enabled: boolean
+  auto_scan_interval_minutes: number
 }
 
 export interface AIConfigUpdate {
@@ -25,6 +27,8 @@ export interface AIConfigUpdate {
   ai_batch_size?: number
   face_min_photos?: number
   vlm_concurrency?: number
+  auto_scan_enabled?: boolean
+  auto_scan_interval_minutes?: number
 }
 
 export interface ConnectionTestRequest {

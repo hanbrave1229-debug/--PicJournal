@@ -13,6 +13,7 @@ from app.schemas.diary import (
     DiaryGenerateDraftRequest,
     DiaryGenerateDraftResponse,
     DiaryMonthResponse,
+    DiaryPolishRequest,
     DiaryResponse,
     DiaryUpsertRequest,
 )
@@ -145,3 +146,23 @@ async def generate_draft(
         raise HTTPException(status_code=502, detail=str(exc))
 
     return DiaryGenerateDraftResponse(draft=draft)
+
+
+@router.post("/polish", response_model=DiaryGenerateDraftResponse)
+async def polish_diary(
+    body: DiaryPolishRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Polish the user's own draft text into a warmer, smoother diary entry."""
+    result = await db.execute(select(AiModelConfig).where(AiModelConfig.is_active.is_(True)))
+    active_cfg = result.scalar_one_or_none()
+    if not active_cfg or not crypto_decrypt(active_cfg.api_key_enc or ""):
+        raise HTTPException(
+            status_code=400,
+            detail="AI API Key 未配置，请前往设置页选择并激活一个 AI 模型配置",
+        )
+    try:
+        polished = await diary_service.polish_diary_text(db, body.text)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return DiaryGenerateDraftResponse(draft=polished)

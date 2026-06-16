@@ -37,4 +37,9 @@ export const diaryApi = {
   generateDraft(body: DiaryGenerateDraftRequest): Promise<{ data: DiaryGenerateDraftResponse }> {
     return axios.post(`${BASE}/generate-draft`, body)
   },
+
+  /** Polish the user's own draft text via AI. */
+  polish(text: string): Promise<{ data: DiaryGenerateDraftResponse }> {
+    return axios.post(`${BASE}/polish`, { text })
+  },
 }

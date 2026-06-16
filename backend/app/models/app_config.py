@@ -37,6 +37,11 @@ class AppConfig(Base):
     # ── VLM 打标 ────────────────────────────────────────────────────────────────
     vlm_concurrency: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
+    # ── 定时扫描 ───────────────────────────────────────────────────────────────
+    # 周期性扫描目录，自动发现新增照片/视频（增量，已入库的跳过）。
+    auto_scan_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    auto_scan_interval_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

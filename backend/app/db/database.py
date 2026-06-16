@@ -108,6 +108,14 @@ async def _run_migrations(conn) -> None:
         await conn.execute(
             text("ALTER TABLE app_config ADD COLUMN vlm_concurrency INTEGER NOT NULL DEFAULT 1")
         )
+    if "auto_scan_enabled" not in cfg_cols:
+        await conn.execute(
+            text("ALTER TABLE app_config ADD COLUMN auto_scan_enabled BOOLEAN NOT NULL DEFAULT 1")
+        )
+    if "auto_scan_interval_minutes" not in cfg_cols:
+        await conn.execute(
+            text("ALTER TABLE app_config ADD COLUMN auto_scan_interval_minutes INTEGER NOT NULL DEFAULT 30")
+        )
 
     # Face embedding dimension migration: face_recognition was 128-dim, insightface is 512-dim.
     # Clear incompatible legacy face data so the next /persons/run starts clean.

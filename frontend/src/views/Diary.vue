@@ -206,7 +206,7 @@
             <Transition name="fade">
               <div v-if="isGenerating" class="generating-overlay">
                 <div class="spinner" />
-                <span class="generating-text">DeepSeek 正在回忆你的这一天...</span>
+                <span class="generating-text">手帐，帮你记住每一天.</span>
               </div>
             </Transition>
           </div>
@@ -215,7 +215,21 @@
           <div class="dialog-actions">
             <el-button plain @click="dialogVisible = false">取消</el-button>
             <div class="action-right">
-              <button class="ai-btn" :disabled="isGenerating" @click="triggerAI">
+              <el-tooltip
+                content="根据你的描述，帮你润色美好的一天"
+                placement="top"
+                :show-after="200"
+              >
+                <button
+                  class="ai-btn ai-btn--polish"
+                  :disabled="!canPolish || isPolishing || isGenerating"
+                  @click="polishDiary"
+                >
+                  <span class="ai-btn-emoji">💡</span>
+                  {{ isPolishing ? '润色中...' : 'AI 润色' }}
+                </button>
+              </el-tooltip>
+              <button class="ai-btn" :disabled="isGenerating || isPolishing" @click="triggerAI">
                 <el-icon><MagicStick /></el-icon>
                 AI 帮我写
               </button>
@@ -546,10 +560,12 @@ async function openDialog(day: number, existing: DiaryCalendarItem | null): Prom
 
   if (existing) {
     selectedMood.value = existing.mood
+    // summary 是被后端截断到 80 字的预览，先用它占位，随后用完整 content 覆盖
     diaryContent.value = existing.summary ?? ''
-    // Fetch full diary entry to load associated photo_ids
+    // Fetch full diary entry to load full content + associated photo_ids
     try {
       const { data } = await diaryApi.getByDate(isoDate(day))
+      diaryContent.value = data.content ?? ''   // 完整正文，修复只显示 80 字的问题
       selectedPhotoIds.value = data.photo_ids
       // Load photo details into allPhotosMap so geo works without opening picker
       if (data.photo_ids.length > 0) {
@@ -655,6 +671,25 @@ function openCrossMonthPicker(): void {
 }
 
 // ── AI draft ──────────────────────────────────────────────────────────────────
+
+const isPolishing = ref(false)
+// 润色按钮：输入框有内容且超过 10 个字时可用
+const canPolish = computed(() => diaryContent.value.trim().length > 10)
+
+async function polishDiary(): Promise<void> {
+  if (!canPolish.value) return
+  isPolishing.value = true
+  try {
+    const { data } = await diaryApi.polish(diaryContent.value.trim())
+    diaryContent.value = data.draft
+    ElMessage.success('已为你润色')
+  } catch (err: any) {
+    const msg = err?.response?.data?.detail ?? 'AI 润色失败，请检查设置页的 AI 配置'
+    ElMessage.error(msg)
+  } finally {
+    isPolishing.value = false
+  }
+}
 
 async function triggerAI(): Promise<void> {
   isGenerating.value = true
@@ -1326,6 +1361,21 @@ onMounted(() => { loadMonth() })
   }
 
   &:disabled { opacity: 0.5; cursor: not-allowed; animation: none; }
+}
+
+// 润色按钮：暖色调，区别于「AI 帮我写」的紫粉渐变
+.ai-btn--polish {
+  background: linear-gradient(135deg, #f59e0b 0%, #f97316 50%, #fbbf24 100%);
+  background-size: 200% 200%;
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.45);
+  }
+}
+
+.ai-btn-emoji {
+  font-size: 14px;
+  line-height: 1;
 }
 
 @keyframes ai-shimmer {

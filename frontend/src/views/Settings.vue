@@ -275,7 +275,7 @@
                 <span class="st-tag-limit-label">本次上限</span>
                 <el-input-number
                   v-model="tagLimit"
-                  :min="1" :max="500"
+                  :min="1" :max="1000"
                   size="small"
                   controls-position="right"
                   style="width: 80px"
@@ -480,6 +480,38 @@
               </el-input>
               <el-button type="primary" :loading="scanning" @click="startScan">
                 开始扫描
+              </el-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 定时扫描 -->
+        <div class="st-group">
+          <div class="st-group-label">定时扫描</div>
+          <div class="st-card st-card--flat">
+            <div class="st-autoscan-row">
+              <div class="st-autoscan-text">
+                <div class="st-autoscan-title">自动发现新增照片/视频</div>
+                <div class="st-autoscan-desc">
+                  周期性扫描最近扫描的目录（增量，已入库的会跳过）。关闭则仅手动扫描。
+                </div>
+              </div>
+              <el-switch v-model="autoScan.enabled" />
+            </div>
+            <div v-if="autoScan.enabled" class="st-autoscan-interval">
+              <span>扫描间隔</span>
+              <el-input-number
+                v-model="autoScan.intervalMinutes"
+                :min="5"
+                :max="1440"
+                :step="5"
+                controls-position="right"
+              />
+              <span>分钟</span>
+            </div>
+            <div class="st-autoscan-actions">
+              <el-button type="primary" :loading="autoScanSaving" @click="saveAutoScan">
+                保存
               </el-button>
             </div>
           </div>
@@ -875,6 +907,26 @@ const ai = reactive({
   vlmConcurrency: 1,
 })
 
+// ── 定时扫描 state ──────────────────────────────────────────────────────────────
+const autoScan = reactive({
+  enabled: true,
+  intervalMinutes: 30,
+})
+const autoScanSaving = ref(false)
+
+async function saveAutoScan() {
+  autoScanSaving.value = true
+  try {
+    await configApi.update({
+      auto_scan_enabled: autoScan.enabled,
+      auto_scan_interval_minutes: autoScan.intervalMinutes,
+    })
+    toast('定时扫描设置已保存')
+  } finally {
+    autoScanSaving.value = false
+  }
+}
+
 // ── 文件夹 (static mock — real data comes from scan tasks) ─────────────────────
 const folderRows = [
   { name: 'Photos',       path: '个人文件夹/Photos',       isDefault: true  },
@@ -966,6 +1018,8 @@ async function loadAiConfig() {
     maskedKey.value = data.ai_api_key_masked
     ai.peopleMinCount  = data.face_min_photos ?? 5
     ai.vlmConcurrency  = data.vlm_concurrency ?? 1
+    autoScan.enabled         = data.auto_scan_enabled ?? true
+    autoScan.intervalMinutes = data.auto_scan_interval_minutes ?? 30
   } catch { /* ignore — backend may not be running */ }
 }
 
@@ -1815,4 +1869,23 @@ async function xmpShowConflicts() {
 .st-account-role { font-size: 12px; color: var(--no-text-muted); margin-top: 2px; }
 .st-account-subtitle { font-size: 14px; font-weight: 600; margin: 0 0 14px; color: var(--no-text-primary); }
 .st-account-form { display: flex; flex-direction: column; }
+
+// ── 定时扫描 ───────────────────────────────────────────────────────────────────
+.st-autoscan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.st-autoscan-title { font-size: 14px; font-weight: 500; color: var(--no-text-primary); }
+.st-autoscan-desc { font-size: 12px; color: var(--no-text-muted); margin-top: 4px; max-width: 520px; }
+.st-autoscan-interval {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--no-text-secondary);
+}
+.st-autoscan-actions { margin-top: 16px; }
 </style>

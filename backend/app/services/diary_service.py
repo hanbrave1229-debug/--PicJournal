@@ -170,6 +170,62 @@ async def get_month_entries(
 
 # ── AI draft generation ───────────────────────────────────────────────────────
 
+async def _resolve_active_llm(db: AsyncSession) -> tuple[str, str, str]:
+    """Return (api_key, base_url, model) from the active AiModelConfig."""
+    from sqlalchemy import select as sa_select
+    from app.models.ai_model_config import AiModelConfig
+    from app.services.crypto import decrypt as crypto_decrypt
+
+    active = (
+        await db.execute(sa_select(AiModelConfig).where(AiModelConfig.is_active.is_(True)))
+    ).scalar_one_or_none()
+    if not active:
+        return "", "", ""
+    return crypto_decrypt(active.api_key_enc or ""), (active.base_url or ""), active.model
+
+
+async def _call_diary_llm(prompt: str, api_key: str, base_url: str, model: str) -> str:
+    """Single-prompt chat completion. Handles reasoning models (content: null)."""
+    effective_base = (base_url.rstrip("/") if base_url else "https://api.openai.com/v1")
+    url = effective_base + "/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:  # 本地模型可无 key
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1200,
+        "temperature": 0.85,
+    }
+    try:
+        # trust_env=False：忽略 NAS 全局代理，直连本地/自建模型端点
+        async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
+            r = await client.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+        msg = r.json()["choices"][0]["message"]
+        # 推理模型可能 content 为 null，真正内容在 reasoning_content
+        return (msg.get("content") or msg.get("reasoning_content") or "").strip()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(f"LLM API 错误 HTTP {exc.response.status_code}: {exc.response.text[:200]}")
+    except Exception as exc:
+        raise RuntimeError(f"AI 调用失败: {exc}")
+
+
+async def polish_diary_text(db: AsyncSession, text: str) -> str:
+    """Rewrite the user's rough diary text into a warmer, more polished entry."""
+    api_key, base_url, model = await _resolve_active_llm(db)
+    prompt = (
+        "你是一位擅长日记写作的中文助手。请把下面这段用户写的日记草稿润色得更通顺、"
+        "温暖自然、有画面感，保留原意和第一人称，不要编造原文没有的事实，"
+        "不要使用子标题或列表，直接输出润色后的正文：\n\n"
+        f"{text.strip()}"
+    )
+    polished = await _call_diary_llm(prompt, api_key, base_url, model)
+    if not polished:
+        raise RuntimeError("AI 返回为空，请重试")
+    return polished
+
+
 async def generate_ai_draft(
     db: AsyncSession,
     diary_date: date,

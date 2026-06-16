@@ -199,5 +199,75 @@ async def list_scan_tasks(db: AsyncSession) -> list[ScanTask]:
     return list(result.scalars().all())
 
 
+# ── Periodic auto-scan ──────────────────────────────────────────────────────
+
+async def _resolve_auto_scan_path() -> str:
+    """Path to scan automatically: the most recently scanned path, else the
+    configured photos root (covers the whole library since scan is recursive)."""
+    async with AsyncSessionLocal() as db:
+        latest = (
+            await db.execute(
+                select(ScanTask).order_by(ScanTask.created_at.desc()).limit(1)
+            )
+        ).scalar_one_or_none()
+    if latest and latest.scan_path:
+        return latest.scan_path
+    from app.config import get_settings
+    return get_settings().photos_root
+
+
+async def _is_scan_active() -> bool:
+    """True if a scan is currently pending or running (avoid overlap)."""
+    async with AsyncSessionLocal() as db:
+        row = (
+            await db.execute(
+                select(ScanTask)
+                .where(ScanTask.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    return row is not None
+
+
+async def run_auto_scan_loop() -> None:
+    """
+    Background loop that periodically scans the library for new files.
+
+    Reads the interval/enabled flag from AppConfig each tick, so settings
+    changes take effect without a restart. Incremental scan skips already
+    imported files, so re-scanning is cheap. Skips a tick if a scan is already
+    running. The heavy AI tagging step only runs if ai_auto_tag is enabled
+    (same behaviour as a manual scan).
+    """
+    from pathlib import Path
+
+    # Let startup (DB init, migrations) settle before the first tick.
+    await asyncio.sleep(60)
+
+    while True:
+        interval = 30
+        try:
+            async with AsyncSessionLocal() as db:
+                cfg = await get_config(db)
+                enabled = cfg.auto_scan_enabled
+                interval = max(5, cfg.auto_scan_interval_minutes or 30)
+
+            if enabled:
+                if await _is_scan_active():
+                    logger.info("auto-scan: a scan is already active — skipping this tick")
+                else:
+                    path = await _resolve_auto_scan_path()
+                    if path and Path(path).exists():
+                        logger.info("auto-scan: triggering incremental scan of %s", path)
+                        async with AsyncSessionLocal() as db:
+                            await create_and_start_scan(path, db)
+                    else:
+                        logger.warning("auto-scan: scan path not found, skipping: %s", path)
+        except Exception:
+            logger.exception("auto-scan: loop iteration failed")
+
+        await asyncio.sleep(interval * 60)
+
+
 # asyncio imported here to avoid circular import at module load time
 import asyncio  # noqa: E402

@@ -30,6 +30,11 @@ class DiaryGenerateDraftRequest(BaseModel):
     mood: MoodType = "calm"
 
 
+class DiaryPolishRequest(BaseModel):
+    """Request AI polishing of the user's own draft text."""
+    text: str = Field(min_length=10)
+
+
 # ── Response schemas ──────────────────────────────────────────────────────────
 
 class DiaryPhotoItem(BaseModel):
