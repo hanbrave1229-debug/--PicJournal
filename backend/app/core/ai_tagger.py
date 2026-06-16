@@ -207,7 +207,8 @@ async def tag_single_photo(
             progress.last_failure = f"HTTP {resp.status_code}: {err_body}"
             return False
 
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
+        msg = resp.json()["choices"][0]["message"]
+        raw = (msg.get("content") or msg.get("reasoning_content") or "").strip()
 
         # Strip markdown fences (```json ... ``` or ``` ... ```)
         import re as _re
