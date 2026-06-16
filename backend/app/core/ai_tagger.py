@@ -182,6 +182,7 @@ async def tag_single_photo(
         "model": model,
         "max_tokens": 512,
         "temperature": 0.2,
+        "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "user",
@@ -202,6 +203,11 @@ async def tag_single_photo(
         # instead of being routed through the host's global proxy.
         async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
             resp = await client.post(url, headers=headers, json=payload)
+            if not resp.is_success and "response_format" in resp.text:
+                # Backend doesn't support response_format (e.g. some LM Studio
+                # builds) — retry once without it.
+                payload.pop("response_format", None)
+                resp = await client.post(url, headers=headers, json=payload)
         if not resp.is_success:
             err_body = resp.text[:300]
             logger.error(
@@ -235,11 +241,18 @@ async def tag_single_photo(
             return None
 
         parsed = _extract_json_obj(content_text) or _extract_json_obj(reasoning_text)
-        if parsed is None:
-            raw = content_text or reasoning_text
-            raise json.JSONDecodeError("no JSON found", raw[:200], 0)
-        caption: str = parsed.get("caption", "")
-        tags: list[str] = parsed.get("tags", [])
+        if parsed is not None:
+            caption: str = parsed.get("caption", "")
+            tags: list[str] = parsed.get("tags", [])
+        else:
+            # Model ignored the JSON instruction and replied with free-form
+            # prose. Fall back to using that prose as the caption directly
+            # rather than discarding the photo outright.
+            raw = (content_text or reasoning_text).strip()
+            if not raw:
+                raise json.JSONDecodeError("empty response", "", 0)
+            caption = _re.sub(r"\s+", " ", raw)[:500]
+            tags = []
 
         photo.ai_caption = caption[:2048] if caption else None
         photo.ai_tags = json.dumps(tags, ensure_ascii=False) if tags else None
