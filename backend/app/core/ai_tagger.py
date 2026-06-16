@@ -35,10 +35,13 @@ settings = get_settings()
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = (
-    "You are a photo analysis assistant. "
-    "Analyze the image and respond ONLY with valid JSON (no markdown, no explanation): "
-    '{"caption": "<one sentence in Chinese describing the scene>", '
-    '"tags": ["tag1", "tag2", ...up to 8 concise Chinese keywords]}'
+    "You are a photo analysis assistant. Look at the actual image content and "
+    "respond ONLY with valid JSON, no markdown, no explanation, no placeholders. "
+    "The JSON must have exactly two keys: \"caption\" (one Chinese sentence describing "
+    "what is actually in the photo) and \"tags\" (a JSON array of up to 8 concise Chinese "
+    "keywords describing the photo). "
+    "Example of the exact format (do NOT reuse this content, describe the real image instead): "
+    '{"caption": "夕阳下的海边沙滩，几只海鸥在飞翔", "tags": ["海滩", "夕阳", "海鸥", "大海"]}'
 )
 
 _USER_PROMPT = "Describe this photo."
