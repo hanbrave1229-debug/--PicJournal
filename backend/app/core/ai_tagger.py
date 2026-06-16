@@ -208,15 +208,33 @@ async def tag_single_photo(
             return False
 
         msg = resp.json()["choices"][0]["message"]
-        raw = (msg.get("content") or msg.get("reasoning_content") or "").strip()
+        content_text = msg.get("content") or ""
+        reasoning_text = msg.get("reasoning_content") or ""
 
-        # Strip markdown fences (```json ... ``` or ``` ... ```)
         import re as _re
-        json_match = _re.search(r"\{.*\}", raw, _re.DOTALL)
-        if json_match:
-            raw = json_match.group(0)
 
-        parsed = json.loads(raw)
+        def _extract_json_obj(text: str) -> dict | None:
+            # Try all top-level {...} blocks (last first — model puts answer at end)
+            for m in reversed(list(_re.finditer(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}", text, _re.DOTALL))):
+                try:
+                    d = json.loads(m.group(0))
+                    if "caption" in d or "tags" in d:
+                        return d
+                except Exception:
+                    pass
+            # Greedy fallback: outermost {...}
+            m = _re.search(r"\{.*\}", text, _re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group(0))
+                except Exception:
+                    pass
+            return None
+
+        parsed = _extract_json_obj(content_text) or _extract_json_obj(reasoning_text)
+        if parsed is None:
+            raw = content_text or reasoning_text
+            raise json.JSONDecodeError("no JSON found", raw[:200], 0)
         caption: str = parsed.get("caption", "")
         tags: list[str] = parsed.get("tags", [])
 

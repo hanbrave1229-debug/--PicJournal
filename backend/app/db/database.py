@@ -52,11 +52,6 @@ def _configure_sqlite(dbapi_connection, _connection_record) -> None:
     cursor.close()
 
 
-@event.listens_for(engine.sync_engine, "begin")
-def _begin_immediate(conn) -> None:
-    """Use BEGIN IMMEDIATE to avoid deferred→exclusive upgrade deadlocks."""
-    conn.exec_driver_sql("BEGIN IMMEDIATE")
-
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
