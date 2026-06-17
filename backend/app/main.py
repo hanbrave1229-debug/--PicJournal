@@ -142,6 +142,7 @@ _AUTH_EXEMPT_PREFIXES = (
     "/api/v1/persons/crops/",
     "/api/v1/videos/",
     "/api/v1/photos/",
+    "/api/v1/scan/ws/",  # WebSocket — auth handled inside the endpoint via ?token=
 )
 
 

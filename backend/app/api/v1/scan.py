@@ -74,9 +74,17 @@ async def list_scan_tasks(
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 @router.websocket("/ws/{task_id}")
-async def scan_progress_ws(task_id: int, websocket: WebSocket) -> None:
+async def scan_progress_ws(
+    task_id: int,
+    websocket: WebSocket,
+    token: str = Query(default=""),
+) -> None:
     """
     Stream real-time scan progress events for *task_id*.
+
+    Auth: accepts JWT via ?token= query param (browsers can't set WS headers)
+    or via the access_token cookie (set on login). Closes with 4001 if neither
+    is valid.
 
     Message shape:
       {"event": "progress", "processed": 420, "total": 1000, "pct": 42.0}
@@ -85,6 +93,15 @@ async def scan_progress_ws(task_id: int, websocket: WebSocket) -> None:
 
     The connection closes automatically when the scan finishes or errors.
     """
+    from app.core.auth_deps import COOKIE_NAME
+    from app.services import auth_service as _auth
+
+    # Resolve token: query param first, then cookie fallback
+    resolved = token.strip() or websocket.cookies.get(COOKIE_NAME, "")
+    if not resolved or _auth.decode_token(resolved) is None:
+        await websocket.close(code=4001)
+        return
+
     await websocket.accept()
     queue = scanner.subscribe(task_id)
 

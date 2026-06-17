@@ -17,6 +17,8 @@ export const scanApi = {
   /** Create a WebSocket connection for real-time progress events */
   connectWs(task_id: number): WebSocket {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    return new WebSocket(`${proto}://${location.host}/api/v1/scan/ws/${task_id}`)
+    const token = localStorage.getItem('picjournal_token') ?? ''
+    const qs = token ? `?token=${encodeURIComponent(token)}` : ''
+    return new WebSocket(`${proto}://${location.host}/api/v1/scan/ws/${task_id}${qs}`)
   },
 }
