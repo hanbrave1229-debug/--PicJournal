@@ -133,6 +133,17 @@ _AUTH_WHITELIST = {
     "/redoc",
 }
 
+# Image-serving paths exempt from auth — <img> tags cannot send Authorization
+# headers, and these endpoints only serve opaque binary files (not user data).
+# Photo/crop IDs are not guessable, so omitting token check is acceptable for
+# a personal NAS deployment.
+_AUTH_EXEMPT_PREFIXES = (
+    "/api/v1/thumbnails/",
+    "/api/v1/persons/crops/",
+    "/api/v1/videos/",
+    "/api/v1/photos/",
+)
+
 
 @app.middleware("http")
 async def enforce_auth(request: Request, call_next):
@@ -141,6 +152,8 @@ async def enforce_auth(request: Request, call_next):
     if request.method == "OPTIONS" or not path.startswith("/api/v1/"):
         return await call_next(request)
     if path in _AUTH_WHITELIST:
+        return await call_next(request)
+    if path.startswith(_AUTH_EXEMPT_PREFIXES):
         return await call_next(request)
 
     from app.core.auth_deps import extract_token

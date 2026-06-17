@@ -446,6 +446,7 @@ async def list_persons(
                 select(PhotoModel.id)
                 .join(FaceCrop, FaceCrop.photo_id == PhotoModel.id)
                 .where(FaceCrop.person_id == p.id, PhotoModel.is_deleted.is_(False))
+                .distinct()
                 .order_by(PhotoModel.taken_at.desc().nullslast(), PhotoModel.created_at.desc())
                 .limit(4)
             )
