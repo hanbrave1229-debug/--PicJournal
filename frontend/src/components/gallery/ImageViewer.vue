@@ -187,6 +187,13 @@
             <div class="iv-tb-sep" />
           </template>
 
+          <!-- Download -->
+          <button class="iv-tb-icon" title="下载原文件" @click="downloadPhoto">
+            <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+            </svg>
+          </button>
+
           <!-- Fullscreen -->
           <button class="iv-tb-icon" title="全屏" @click="toggleFullscreen">
             <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -495,6 +502,14 @@ function resetTransform() {
 
 function changeZoom(delta: number) {
   zoom.value = Math.max(0.5, Math.min(8, zoom.value + delta))
+}
+
+function downloadPhoto() {
+  if (!props.photo) return
+  const a = document.createElement('a')
+  a.href = `/api/v1/photos/${props.photo.id}/file`
+  a.download = props.photo.file_name ?? `photo_${props.photo.id}`
+  a.click()
 }
 
 function toggleFullscreen() {
