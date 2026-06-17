@@ -26,6 +26,7 @@ async def list_photos(
     date_to: str | None = None,
     media_type: str | None = None,  # "photo" | "video" | None (all)
     tagged: bool | None = None,     # True=has ai_caption, False=no caption, None=all
+    keyword: str | None = None,     # Free-text search in ai_caption + ai_tags
 ) -> tuple[list[Photo], int]:
     """
     Return (photos, total_count) for the given page/filter.
@@ -73,6 +74,12 @@ async def list_photos(
         stmt = stmt.where(Photo.ai_caption.is_not(None))
     elif tagged is False:
         stmt = stmt.where(Photo.ai_caption.is_(None))
+
+    if keyword:
+        kw = f"%{keyword}%"
+        stmt = stmt.where(
+            Photo.ai_caption.ilike(kw) | Photo.ai_tags.ilike(kw)
+        )
 
     # Total count
     count_stmt = select(func.count()).select_from(stmt.subquery())

@@ -77,6 +77,12 @@
           <div class="gl-search-mode">
             <button
               class="gl-mode-btn"
+              :class="{ 'is-active': searchMode === 'keyword' }"
+              title="关键词搜索打标内容（无需 AI 服务）"
+              @click="searchMode = 'keyword'"
+            >标签</button>
+            <button
+              class="gl-mode-btn"
               :class="{ 'is-active': searchMode === 'nl' }"
               title="AI 语义 SQL 搜索（需要 API Key）"
               @click="searchMode = 'nl'"
@@ -93,6 +99,8 @@
             class="gl-nl-input"
             :placeholder="searchMode === 'clip'
               ? '🔮 向量搜索：如「夕阳海边」「笑脸」（离线）…'
+              : searchMode === 'keyword'
+              ? '🏷️ 标签搜索：如「猫」「海边」「夜晚」…'
               : '✨ AI 搜索：如「春天的花」「2023年旅行」…'"
             @keydown.enter="runSearch"
             @keydown.escape="clearNLSearch"
@@ -851,7 +859,7 @@ const nlQuery      = ref('')
 const nlSearching  = ref(false)
 const nlResults    = ref<Photo[] | null>(null)  // null = not in search mode
 const nlResultClause = ref('')
-const searchMode   = ref<'nl' | 'clip'>('nl')
+const searchMode   = ref<'keyword' | 'nl' | 'clip'>('keyword')
 
 // ── Multi-select & transfer ───────────────────────────────────────────────────
 const selectMode       = ref(false)
@@ -897,12 +905,32 @@ function clearSelection() {
   selectedIds.value = []
 }
 
-/** Unified dispatcher: routes to NL or CLIP search based on mode toggle */
+/** Unified dispatcher: routes to keyword / NL / CLIP search based on mode toggle */
 async function runSearch(): Promise<void> {
   if (searchMode.value === 'clip') {
     await runClipSearch()
+  } else if (searchMode.value === 'keyword') {
+    await runKeywordSearch()
   } else {
     await runNLSearch()
+  }
+}
+
+/** Keyword search: LIKE match on ai_caption + ai_tags, no AI service needed. */
+async function runKeywordSearch(): Promise<void> {
+  const q = nlQuery.value.trim()
+  if (!q) { clearNLSearch(); return }
+  nlSearching.value = true
+  try {
+    const { data } = await axios.get('/api/v1/photos', {
+      params: { keyword: q, page: 1, page_size: 200, sort_by: 'taken_at', order: 'desc' }
+    })
+    nlResults.value = data.items
+    if (data.total === 0) ElMessage.info('没有找到含该关键词的照片，请先对照片打标')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail ?? '搜索失败')
+  } finally {
+    nlSearching.value = false
   }
 }
 

@@ -55,6 +55,7 @@ async def list_photos_endpoint(
     date_to: str | None = Query(None, description="Filter photos taken on or before this date (YYYY-MM-DD)"),
     media_type: str | None = Query(None, description="Filter by media type: 'photo' or 'video'"),
     tagged: bool | None = Query(None, description="true=only AI-tagged, false=only untagged"),
+    keyword: str | None = Query(None, description="Search in ai_caption and ai_tags"),
     db: AsyncSession = Depends(get_db),
 ) -> PhotoListResponse:
     photos, total = await list_photos(
@@ -69,6 +70,7 @@ async def list_photos_endpoint(
         date_to=date_to,
         media_type=media_type,
         tagged=tagged,
+        keyword=keyword,
     )
     return PhotoListResponse(
         total=total,
