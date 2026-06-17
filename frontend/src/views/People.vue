@@ -197,8 +197,18 @@
         </div>
       </div>
 
+      <!-- Load more photos -->
+      <div
+        v-if="personStore.activePhotos.length > 0 && personStore.activePhotos.length < personStore.activePhotosTotal"
+        class="pp-photos-load-more"
+      >
+        <el-button size="small" :loading="personStore.loadingPhotos" @click="loadMorePhotos">
+          加载更多（还有 {{ personStore.activePhotosTotal - personStore.activePhotos.length }} 张）
+        </el-button>
+      </div>
+
       <!-- No photos -->
-      <div v-else class="pp-photos-empty">
+      <div v-else-if="!personStore.activePhotos.length" class="pp-photos-empty">
         <el-icon size="24"><PictureFilled /></el-icon>
         <span>该人物暂无照片</span>
       </div>
@@ -292,6 +302,7 @@
       :has-next="viewerIndex < personStore.activePhotos.length - 1"
       @close="viewerPhoto = null"
       @navigate="navigateViewer"
+      @soft-delete="onViewerSoftDelete"
     />
   </div>
 </template>
@@ -407,6 +418,25 @@ function navigateViewer(delta: 1 | -1) {
   const photos = personStore.activePhotos
   viewerIndex.value = Math.max(0, Math.min(photos.length - 1, viewerIndex.value + delta))
   viewerPhoto.value = photos[viewerIndex.value]
+}
+
+function onViewerSoftDelete(photoId: number) {
+  personStore.activePhotos.splice(
+    personStore.activePhotos.findIndex((p) => p.id === photoId),
+    1,
+  )
+  personStore.activePhotosTotal = Math.max(0, personStore.activePhotosTotal - 1)
+  const photos = personStore.activePhotos
+  if (photos.length === 0) {
+    viewerPhoto.value = null
+  } else {
+    viewerIndex.value = Math.min(viewerIndex.value, photos.length - 1)
+    viewerPhoto.value = photos[viewerIndex.value]
+  }
+}
+
+async function loadMorePhotos() {
+  await personStore.loadMorePersonPhotos()
 }
 
 // ── Date range label ───────────────────────────────────────────────────────

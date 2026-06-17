@@ -83,6 +83,19 @@ export const usePersonStore = defineStore('person', () => {
     }
   }
 
+  async function loadMorePersonPhotos() {
+    if (!activePerson.value) return
+    const nextPage = Math.floor(activePhotos.value.length / 80) + 1
+    loadingPhotos.value = true
+    try {
+      const { data } = await personsApi.photos(activePerson.value.id, nextPage, 80)
+      activePhotos.value = [...activePhotos.value, ...data.items]
+      activePhotosTotal.value = data.total
+    } finally {
+      loadingPhotos.value = false
+    }
+  }
+
   // Rename
   async function renamePerson(id: number, name: string) {
     const { data } = await personsApi.rename(id, name)
@@ -157,6 +170,7 @@ export const usePersonStore = defineStore('person', () => {
     loadMorePersons,
     runAnalysis,
     selectPerson,
+    loadMorePersonPhotos,
     renamePerson,
     hidePerson,
     lockPerson,
