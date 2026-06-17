@@ -42,7 +42,13 @@ async def list_photos(
     if sort_by not in allowed_sort:
         sort_by = "taken_at"
 
-    col = getattr(Photo, sort_by, Photo.taken_at)
+    from sqlalchemy import func as _func
+    if sort_by == "taken_at":
+        # Videos often lack taken_at; fall back to created_at so they appear
+        # inline with photos instead of sinking to the bottom of the timeline.
+        col = _func.coalesce(Photo.taken_at, Photo.created_at)
+    else:
+        col = getattr(Photo, sort_by, Photo.taken_at)
     order_expr = col.desc() if order == "desc" else col.asc()
 
     stmt = select(Photo).where(Photo.is_deleted.is_(False), Photo.is_archived.is_(False))

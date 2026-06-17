@@ -73,6 +73,22 @@ class FileInfo(NamedTuple):
     duration: float | None = None  # video duration in seconds
 
 
+def _parse_datetime_from_filename(name: str) -> datetime | None:
+    """Try to extract a datetime from common camera/phone video filename patterns."""
+    import re as _re
+    # Matches: 20250615_111903, VID_20250615_111903, 20250615111903, etc.
+    m = _re.search(r"(\d{4})(\d{2})(\d{2})[_\-]?(\d{2})(\d{2})(\d{2})", name)
+    if m:
+        try:
+            return datetime(
+                int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                int(m.group(4)), int(m.group(5)), int(m.group(6)),
+            )
+        except ValueError:
+            pass
+    return None
+
+
 def _process_video_file(file_path: str) -> FileInfo | None:
     """
     Lightweight video file metadata extraction (runs in process pool, no FFmpeg here —
@@ -82,6 +98,7 @@ def _process_video_file(file_path: str) -> FileInfo | None:
         path = Path(file_path)
         stat = path.stat()
         exif: ExifData = extract_exif(path)  # may return empty ExifData for videos
+        taken_at = exif.taken_at or _parse_datetime_from_filename(path.name)
         return FileInfo(
             file_path=file_path,
             file_name=path.name,
@@ -89,7 +106,7 @@ def _process_video_file(file_path: str) -> FileInfo | None:
             file_size=stat.st_size,
             width=None,
             height=None,
-            taken_at=exif.taken_at,
+            taken_at=taken_at,
             camera_make=exif.camera_make,
             camera_model=exif.camera_model,
             aperture=None,
