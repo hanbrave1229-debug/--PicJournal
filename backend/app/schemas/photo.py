@@ -52,6 +52,9 @@ class PhotoResponse(BaseModel):
     city: str | None = None
     # Archive dual-track
     is_archived: bool = False
+    # Media type: "photo" | "video"
+    media_type: str = "photo"
+    duration: float | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -97,6 +100,8 @@ class PhotoResponse(BaseModel):
             province=p.province,
             city=p.city,
             is_archived=p.is_archived,
+            media_type=getattr(p, "media_type", "photo") or "photo",
+            duration=getattr(p, "duration", None),
             created_at=p.created_at,
             updated_at=p.updated_at,
         )

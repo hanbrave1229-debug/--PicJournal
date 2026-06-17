@@ -40,3 +40,5 @@ bcrypt>=4.1.0
 
 # CLIP model download (used only on first run; models cached in /data/models/clip/)
 huggingface-hub>=0.23.0
+# Unicode-aware regex for the CLIP BPE tokenizer (\p{L}/\p{N} patterns)
+regex>=2023.0.0

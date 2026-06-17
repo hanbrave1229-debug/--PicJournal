@@ -124,10 +124,10 @@ def _download_models(visual_path: Path, textual_path: Path,
     logger.info("Downloading CLIP ONNX models from HuggingFace Hub (%s)…", MODEL_REPO)
 
     files = {
-        "onnx/visual.onnx":  visual_path,
-        "onnx/textual.onnx": textual_path,
-        "tokenizer/vocab.json": vocab_path,
-        "tokenizer/merges.txt": merges_path,
+        "onnx/vision_model.onnx": visual_path,
+        "onnx/text_model.onnx":   textual_path,
+        "vocab.json": vocab_path,
+        "merges.txt": merges_path,
     }
     for repo_file, local_path in files.items():
         if not local_path.exists():
@@ -188,10 +188,21 @@ class CLIPTokenizer:
                       if line and not line.startswith("#")]
         self.bpe_ranks = {pair: i for i, pair in enumerate(merges)}
         self._cache: dict[str, tuple[str, ...]] = {}
-        self._pat = re.compile(
-            r"""'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""",
-            re.IGNORECASE,
-        ) if hasattr(re, "findall") else None
+        # The official CLIP regex uses Unicode property classes (\p{L}, \p{N})
+        # which the stdlib `re` module does NOT support. Prefer the third-party
+        # `regex` module; fall back to a stdlib-compatible approximation
+        # (\p{L}->[^\W\d_], \p{N}->\d) so tokenisation still works without it.
+        try:
+            import regex as _regex  # type: ignore
+            self._pat = _regex.compile(
+                r"""'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""",
+                _regex.IGNORECASE,
+            )
+        except ImportError:
+            self._pat = re.compile(
+                r"""'s|'t|'re|'ve|'m|'ll|'d|[^\W\d_]+|\d|[^\s\w]+""",
+                re.IGNORECASE,
+            )
 
     # Simple fallback tokeniser for tokens
     def _tokenize_word(self, text: str) -> list[str]:

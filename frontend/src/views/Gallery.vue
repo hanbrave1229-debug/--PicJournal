@@ -283,6 +283,12 @@
                     :alt="photo.file_name"
                     :thumbhash="photo.thumbhash"
                   />
+                  <!-- Video play badge -->
+                  <div v-if="photo.media_type === 'video'" class="gl-video-badge">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </div>
                   <!-- Select mode checkbox -->
                   <div v-if="selectMode" class="gl-cell-check" @click.stop="togglePhotoSelect(photo.id, $event)">
                     <div :class="['gl-cell-checkbox', selectedIds.includes(photo.id) && 'gl-cell-checkbox--on']">
@@ -1192,6 +1198,22 @@ function clearNLSearch(): void {
     border-color: var(--no-accent);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
   }
+}
+
+.gl-video-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .gl-thumb {
