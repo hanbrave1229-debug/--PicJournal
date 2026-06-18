@@ -86,6 +86,28 @@ def _check_db_not_on_network_mount() -> None:
         sys.exit(1)
 
 
+async def _reset_orphaned_scans() -> None:
+    """Mark interrupted PENDING/RUNNING scan tasks as FAILED on startup."""
+    from datetime import datetime
+    from sqlalchemy import update
+    from app.db.database import AsyncSessionLocal
+    from app.models.scan_task import ScanTask, ScanStatus
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            update(ScanTask)
+            .where(ScanTask.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]))
+            .values(status=ScanStatus.FAILED, finished_at=datetime.utcnow(),
+                    error_message="进程重启，扫描被中断")
+        )
+        await db.commit()
+        if result.rowcount:
+            import logging
+            logging.getLogger(__name__).info(
+                "startup: reset %d orphaned scan task(s) to FAILED", result.rowcount
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize DB tables on startup, then launch the periodic auto-scan loop."""
@@ -94,6 +116,12 @@ async def lifespan(app: FastAPI):
 
     _check_db_not_on_network_mount()
     await init_db()
+
+    # Reset orphaned scan tasks: any PENDING/RUNNING row left over from a
+    # previous process (container restart mid-scan) can never finish on its
+    # own and would otherwise pin the dashboard at "扫描中" forever and block
+    # the auto-scan loop (which skips when a scan looks active).
+    await _reset_orphaned_scans()
 
     auto_scan_task = asyncio.create_task(run_auto_scan_loop(), name="auto-scan-loop")
     try:

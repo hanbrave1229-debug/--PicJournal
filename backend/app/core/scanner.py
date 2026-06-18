@@ -98,7 +98,11 @@ def _process_video_file(file_path: str) -> FileInfo | None:
         path = Path(file_path)
         stat = path.stat()
         exif: ExifData = extract_exif(path)  # may return empty ExifData for videos
-        taken_at = exif.taken_at or _parse_datetime_from_filename(path.name)
+        taken_at = (
+            exif.taken_at
+            or _parse_datetime_from_filename(path.name)
+            or datetime.fromtimestamp(stat.st_mtime)
+        )
         return FileInfo(
             file_path=file_path,
             file_name=path.name,
@@ -181,6 +185,14 @@ def _process_file(file_path: str) -> FileInfo | None:
 
         exif: ExifData = extract_exif(path)
 
+        # taken_at fallback chain: EXIF → filename date → file mtime.
+        # Avoids photos/videos without EXIF all collapsing onto the import date.
+        taken_at = (
+            exif.taken_at
+            or _parse_datetime_from_filename(path.name)
+            or datetime.fromtimestamp(stat.st_mtime)
+        )
+
         return FileInfo(
             file_path=file_path,
             file_name=path.name,
@@ -188,7 +200,7 @@ def _process_file(file_path: str) -> FileInfo | None:
             file_size=stat.st_size,
             width=width,
             height=height,
-            taken_at=exif.taken_at,
+            taken_at=taken_at,
             camera_make=exif.camera_make,
             camera_model=exif.camera_model,
             aperture=exif.aperture,
