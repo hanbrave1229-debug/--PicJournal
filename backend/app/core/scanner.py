@@ -74,18 +74,37 @@ class FileInfo(NamedTuple):
 
 
 def _parse_datetime_from_filename(name: str) -> datetime | None:
-    """Try to extract a datetime from common camera/phone video filename patterns."""
+    """
+    Try to extract a datetime from common camera/phone filename patterns,
+    e.g. 20250615_111903, VID_20250615_111903, IMG_20250615.
+    Year is constrained to 1990..(this year+1) so random numeric filenames
+    (e.g. "9668123456.mp4") are NOT mistaken for dates.
+    """
     import re as _re
-    # Matches: 20250615_111903, VID_20250615_111903, 20250615111903, etc.
-    m = _re.search(r"(\d{4})(\d{2})(\d{2})[_\-]?(\d{2})(\d{2})(\d{2})", name)
+
+    max_year = datetime.now().year + 1
+
+    def _valid(y: int, mo: int, d: int) -> bool:
+        return 1990 <= y <= max_year and 1 <= mo <= 12 and 1 <= d <= 31
+
+    # Pattern 1: full date+time (14 digits, optional separators)
+    m = _re.search(r"(19\d{2}|20\d{2})[_\-]?(\d{2})[_\-]?(\d{2})[_\-]?(\d{2})(\d{2})(\d{2})", name)
     if m:
-        try:
-            return datetime(
-                int(m.group(1)), int(m.group(2)), int(m.group(3)),
-                int(m.group(4)), int(m.group(5)), int(m.group(6)),
-            )
-        except ValueError:
-            pass
+        y, mo, d, h, mi, s = (int(g) for g in m.groups())
+        if _valid(y, mo, d):
+            try:
+                return datetime(y, mo, d, h, mi, s)
+            except ValueError:
+                pass
+    # Pattern 2: date only (8 digits), year prefix anchored to 19/20
+    m = _re.search(r"(19\d{2}|20\d{2})[_\-]?(\d{2})[_\-]?(\d{2})", name)
+    if m:
+        y, mo, d = (int(g) for g in m.groups())
+        if _valid(y, mo, d):
+            try:
+                return datetime(y, mo, d)
+            except ValueError:
+                pass
     return None
 
 
