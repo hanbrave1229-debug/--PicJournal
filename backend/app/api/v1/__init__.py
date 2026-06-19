@@ -4,7 +4,7 @@ from app.api.v1 import (
     scan, photos, duplicates, thumbnails, scoring, dashboard,
     persons, albums, trash, config, diary, search, archive,
     geocoding, semantic, stacks, export_api, import_api, vision_api,
-    ai_configs_api, videos, xmp_sync, auth, backup_api,
+    ai_configs_api, videos, xmp_sync, auth, backup_api, memories,
 )
 
 router = APIRouter()
@@ -29,6 +29,7 @@ router.include_router(stacks.router,      prefix="/stacks",      tags=["stacks"]
 router.include_router(export_api.router,  prefix="/export",      tags=["export"])
 router.include_router(import_api.router,  prefix="/import",      tags=["import"])
 router.include_router(backup_api.router,  prefix="/backup",      tags=["backup"])
+router.include_router(memories.router,     prefix="/memories",    tags=["memories"])
 router.include_router(vision_api.router,     prefix="/vision",      tags=["vision"])
 router.include_router(ai_configs_api.router, prefix="/ai-configs",  tags=["ai-configs"])
 router.include_router(videos.router,         prefix="/videos",       tags=["videos"])

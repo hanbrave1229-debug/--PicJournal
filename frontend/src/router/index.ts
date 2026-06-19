@@ -83,6 +83,11 @@ const router = createRouter({
       name: 'backup',
       component: () => import('@/views/Backup.vue'),
     },
+    {
+      path: '/memories',
+      name: 'memories',
+      component: () => import('@/views/Memories.vue'),
+    },
   ],
 })
 

@@ -47,6 +47,11 @@
             <span class="menu-item-text">照片日记</span>
             <span class="menu-new-badge">New</span>
           </el-menu-item>
+          <el-menu-item index="/memories">
+            <el-icon><Sunrise /></el-icon>
+            <span class="menu-item-text">回忆</span>
+            <span class="menu-new-badge">New</span>
+          </el-menu-item>
 
           <el-menu-item index="/places">
             <el-icon><MapLocation /></el-icon>

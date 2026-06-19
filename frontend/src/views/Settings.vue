@@ -517,6 +517,45 @@
           </div>
         </div>
 
+        <!-- 语义索引（向量搜索） -->
+        <div class="st-group">
+          <div class="st-group-label">语义索引（向量搜索）</div>
+          <div class="st-card st-card--flat">
+            <div class="st-autoscan-row">
+              <div class="st-autoscan-text">
+                <div class="st-autoscan-title">CLIP 向量嵌入</div>
+                <div class="st-autoscan-desc">
+                  为照片生成语义向量后，「向量搜索」才能用自然语言搜图（如「夕阳」「笑脸」）。
+                  CPU 密集，建议空闲时跑。已嵌入的会跳过。
+                </div>
+              </div>
+            </div>
+            <div class="st-embed-status">
+              <span :class="['st-embed-dot', clipStatus.available ? 'is-on' : 'is-off']" />
+              <span>模型：{{ clipStatus.available ? '就绪' : '不可用' }}</span>
+              <span class="st-embed-sep">·</span>
+              <span>已嵌入 {{ clipStatus.embedded_photos }} / {{ clipStatus.total_photos }}</span>
+            </div>
+            <el-progress
+              v-if="clipStatus.total_photos > 0"
+              :percentage="embedPct"
+              :stroke-width="12"
+              :status="embedPct === 100 ? 'success' : undefined"
+            />
+            <div class="st-autoscan-actions">
+              <el-button
+                type="primary"
+                :loading="embedStarting"
+                :disabled="!clipStatus.available || embedRunning"
+                @click="startEmbedding"
+              >
+                {{ embedRunning ? '嵌入中…' : '开始嵌入' }}
+              </el-button>
+              <el-button text :disabled="embedRunning" @click="refreshClipStatus">刷新状态</el-button>
+            </div>
+          </div>
+        </div>
+
         <!-- 个人文件夹列表 -->
         <div class="st-group">
           <div class="st-folder-header">
@@ -679,6 +718,7 @@ import ScanProgress from '@/components/common/ScanProgress.vue'
 import { formatDate } from '@/utils/format'
 import axios from 'axios'
 import { configApi } from '@/api/config'
+import { searchApi } from '@/api/search'
 import { PROVIDERS } from '@/types/config'
 import type { AIProvider, ConnectionTestResponse } from '@/types/config'
 import { useRouter } from 'vue-router'
@@ -927,6 +967,57 @@ async function saveAutoScan() {
   }
 }
 
+// ── 语义索引（CLIP 向量嵌入）─────────────────────────────────────────────────
+const clipStatus = reactive({
+  available: false,
+  total_photos: 0,
+  embedded_photos: 0,
+  index_size: 0,
+})
+const embedStarting = ref(false)
+let embedPollTimer: ReturnType<typeof setInterval> | null = null
+
+const embedPct = computed(() =>
+  clipStatus.total_photos > 0
+    ? Math.round((clipStatus.embedded_photos / clipStatus.total_photos) * 100)
+    : 0,
+)
+const embedRunning = computed(() =>
+  clipStatus.total_photos > 0 && clipStatus.embedded_photos < clipStatus.total_photos && embedPollTimer !== null,
+)
+
+async function refreshClipStatus() {
+  try {
+    const { data } = await searchApi.semanticStatus()
+    clipStatus.available = data.available
+    clipStatus.total_photos = data.total_photos
+    clipStatus.embedded_photos = data.embedded_photos
+    clipStatus.index_size = data.index_size
+  } catch { /* ignore */ }
+}
+
+async function startEmbedding() {
+  embedStarting.value = true
+  try {
+    await searchApi.startEmbedding(false)
+    toast('已开始嵌入，后台进行中')
+    // Poll status until fully embedded
+    if (embedPollTimer) clearInterval(embedPollTimer)
+    embedPollTimer = setInterval(async () => {
+      await refreshClipStatus()
+      if (clipStatus.embedded_photos >= clipStatus.total_photos) {
+        if (embedPollTimer) clearInterval(embedPollTimer)
+        embedPollTimer = null
+        toast('嵌入完成，向量搜索已就绪')
+      }
+    }, 5000)
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail ?? '启动嵌入失败')
+  } finally {
+    embedStarting.value = false
+  }
+}
+
 // ── 文件夹 (static mock — real data comes from scan tasks) ─────────────────────
 const folderRows = [
   { name: 'Photos',       path: '个人文件夹/Photos',       isDefault: true  },
@@ -953,6 +1044,7 @@ onMounted(() => {
   loadAiConfigs()
   loadPhotoStats()
   loadImportHistory()
+  refreshClipStatus()
   // Restore progress if a tagging task was running before page reload
   pollTagStatus().then(() => {
     if (tagRunning.value && !tagPollTimer) {
@@ -1080,6 +1172,10 @@ onUnmounted(() => {
   if (tagPollTimer) {
     clearInterval(tagPollTimer)
     tagPollTimer = null
+  }
+  if (embedPollTimer) {
+    clearInterval(embedPollTimer)
+    embedPollTimer = null
   }
 })
 
