@@ -12,6 +12,9 @@
       </div>
       <div class="ad-header-actions" v-if="albumStore.currentAlbum">
         <span class="soft-badge">{{ albumStore.currentAlbumTotal }} 张</span>
+        <el-button size="small" plain :icon="Share" @click="openShareDialog">
+          分享
+        </el-button>
         <el-button size="small" plain :icon="Upload" @click="importDialogVisible = true">
           导入 ZIP
         </el-button>
@@ -100,6 +103,51 @@
       :hide-tabs="['photos', 'library']"
       @imported="onImported"
     />
+
+    <!-- Share dialog -->
+    <el-dialog v-model="shareDialogVisible" title="分享相册" width="440px">
+      <div class="ad-share">
+        <template v-if="!createdShare">
+          <div class="ad-share-row">
+            <span>访问密码（可选）</span>
+            <el-input v-model="shareForm.password" placeholder="留空则无需密码" show-password style="width: 220px" />
+          </div>
+          <div class="ad-share-row">
+            <span>有效期</span>
+            <el-select v-model="shareForm.expiresDays" style="width: 220px">
+              <el-option :value="0" label="永久有效" />
+              <el-option :value="1" label="1 天" />
+              <el-option :value="7" label="7 天" />
+              <el-option :value="30" label="30 天" />
+            </el-select>
+          </div>
+          <el-button type="primary" :loading="shareCreating" @click="createShare" style="margin-top: 8px">
+            生成分享链接
+          </el-button>
+        </template>
+
+        <template v-else>
+          <p class="ad-share-tip">链接已生成，复制发给家人即可（{{ createdShare.has_password ? '需密码' : '无需密码' }}）：</p>
+          <div class="ad-share-link">
+            <el-input :model-value="shareUrl" readonly />
+            <el-button type="primary" @click="copyLink">复制</el-button>
+          </div>
+        </template>
+
+        <!-- Existing shares -->
+        <div v-if="existingShares.length" class="ad-share-list">
+          <div class="ad-share-list-title">已有链接</div>
+          <div v-for="s in existingShares" :key="s.token" class="ad-share-item">
+            <span class="ad-share-item-info">
+              {{ s.has_password ? '🔒' : '🌐' }}
+              {{ s.expires_at ? `至 ${fmtDate(s.expires_at)}` : '永久' }}
+              · {{ s.view_count }} 次访问
+            </span>
+            <el-button text type="danger" size="small" @click="revokeShare(s.token)">撤销</el-button>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -107,10 +155,11 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Loading, Picture, PictureFilled, Remove, Select, Upload } from '@element-plus/icons-vue'
+import { ArrowLeft, Loading, Picture, PictureFilled, Remove, Select, Share, Upload } from '@element-plus/icons-vue'
 import ImportDialog from '@/components/transfer/ImportDialog.vue'
 import { useAlbumStore } from '@/stores/useAlbumStore'
 import ImageViewer from '@/components/gallery/ImageViewer.vue'
+import { sharesApi, type ShareInfo } from '@/api/shares'
 import type { Photo } from '@/types/photo'
 
 const route = useRoute()
@@ -122,6 +171,66 @@ const columns = ref(5)
 
 // ── Import ─────────────────────────────────────────────────────────────────────
 const importDialogVisible = ref(false)
+
+// ── Share ────────────────────────────────────────────────────────────────────
+const shareDialogVisible = ref(false)
+const shareForm = ref({ password: '', expiresDays: 0 })
+const shareCreating = ref(false)
+const createdShare = ref<ShareInfo | null>(null)
+const existingShares = ref<ShareInfo[]>([])
+
+const shareUrl = computed(() =>
+  createdShare.value ? `${window.location.origin}/share/${createdShare.value.token}` : '',
+)
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('zh-CN')
+}
+
+async function openShareDialog() {
+  createdShare.value = null
+  shareForm.value = { password: '', expiresDays: 0 }
+  shareDialogVisible.value = true
+  try {
+    const { data } = await sharesApi.listForAlbum(albumId.value)
+    existingShares.value = data
+  } catch { existingShares.value = [] }
+}
+
+async function createShare() {
+  shareCreating.value = true
+  try {
+    const { data } = await sharesApi.create(
+      albumId.value, shareForm.value.password, shareForm.value.expiresDays || null,
+    )
+    createdShare.value = data
+    existingShares.value = [data, ...existingShares.value]
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail ?? '生成失败')
+  } finally {
+    shareCreating.value = false
+  }
+}
+
+async function copyLink() {
+  try {
+    await navigator.clipboard.writeText(shareUrl.value)
+    ElMessage.success('链接已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动复制')
+  }
+}
+
+async function revokeShare(token: string) {
+  try {
+    await sharesApi.revoke(token)
+    existingShares.value = existingShares.value.filter((s) => s.token !== token)
+    if (createdShare.value?.token === token) createdShare.value = null
+    ElMessage.success('已撤销')
+  } catch {
+    ElMessage.error('撤销失败')
+  }
+}
 
 function onImported() {
   albumStore.loadAlbumPhotos(albumId.value, true)
@@ -422,4 +531,13 @@ onUnmounted(() => {
   color: var(--no-text-muted);
   margin-top: 8px;
 }
+
+.ad-share { display: flex; flex-direction: column; gap: 14px; }
+.ad-share-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+.ad-share-tip { font-size: 13px; color: var(--no-text-muted); margin: 0 0 4px; }
+.ad-share-link { display: flex; gap: 8px; }
+.ad-share-list { border-top: 1px solid var(--no-border-low, #2a2a2a); padding-top: 12px; margin-top: 4px; }
+.ad-share-list-title { font-size: 12px; color: var(--no-text-muted); margin-bottom: 8px; }
+.ad-share-item { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+.ad-share-item-info { color: var(--no-text, #ccc); }
 </style>

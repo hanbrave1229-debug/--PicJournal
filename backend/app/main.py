@@ -171,6 +171,7 @@ _AUTH_EXEMPT_PREFIXES = (
     "/api/v1/videos/",
     "/api/v1/photos/",
     "/api/v1/scan/ws/",  # WebSocket — auth handled inside the endpoint via ?token=
+    "/api/v1/shares/public/",  # Public album shares — token/password checked inside
 )
 
 

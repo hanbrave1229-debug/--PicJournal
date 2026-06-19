@@ -7,3 +7,4 @@ from app.models.app_config import AppConfig  # noqa: F401
 from app.models.diary import Diary, DiaryPhoto  # noqa: F401
 from app.models.ai_model_config import AiModelConfig  # noqa: F401
 from app.models.user import User, UserRole  # noqa: F401
+from app.models.share import AlbumShare  # noqa: F401

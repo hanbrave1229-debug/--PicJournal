@@ -165,7 +165,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 const route = useRoute()
 const currentRoute = computed(() => route.path)
-const isAuthRoute = computed(() => route.name === 'login')
+const isAuthRoute = computed(() => route.name === 'login' || route.meta.public === true)
 </script>
 
 <style lang="scss">
