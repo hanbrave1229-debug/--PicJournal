@@ -234,7 +234,6 @@ const isAuthRoute = computed(() => route.name === 'login')
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(52, 211, 153, 0.18);
   color: var(--no-accent);
   font-weight: 500;
   flex-shrink: 0;
