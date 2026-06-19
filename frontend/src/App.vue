@@ -29,6 +29,11 @@
             <el-icon><PictureFilled /></el-icon>
             <span>照片库</span>
           </el-menu-item>
+          <el-menu-item index="/backup">
+            <el-icon><UploadFilled /></el-icon>
+            <span class="menu-item-text">手机备份</span>
+            <span class="menu-new-badge">New</span>
+          </el-menu-item>
           <el-menu-item index="/people">
             <el-icon><UserFilled /></el-icon>
             <span>智能分类</span>
@@ -109,6 +114,12 @@
           <polyline points="21 15 16 10 5 21"/>
         </svg>
         <span>照片库</span>
+      </router-link>
+      <router-link to="/backup" class="app-mobile-tab" :class="{ active: currentRoute.startsWith('/backup') }">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+        </svg>
+        <span>备份</span>
       </router-link>
       <router-link to="/places" class="app-mobile-tab" :class="{ active: currentRoute.startsWith('/places') }">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
