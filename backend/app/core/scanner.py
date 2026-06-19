@@ -22,6 +22,7 @@ import aiofiles.os
 
 from app.config import get_settings
 from app.core.exif_extractor import ExifData, extract as extract_exif
+from app.core.image_processor import ImageProcessor
 
 settings = get_settings()
 
@@ -71,6 +72,7 @@ class FileInfo(NamedTuple):
     sharpness_score: float | None  # Laplacian variance — higher = sharper
     media_type: str = "photo"  # "photo" | "video"
     duration: float | None = None  # video duration in seconds
+    md5: str | None = None  # MD5 digest for dedup / phone-backup checks
 
 
 def _parse_datetime_from_filename(name: str) -> datetime | None:
@@ -141,6 +143,7 @@ def _process_video_file(file_path: str) -> FileInfo | None:
             sharpness_score=None,
             media_type="video",
             duration=None,  # filled later via ffprobe
+            md5=ImageProcessor.compute_md5(path),
         )
     except Exception:
         return None
@@ -231,6 +234,7 @@ def _process_file(file_path: str) -> FileInfo | None:
             sharpness_score=sharpness_score,
             media_type="photo",
             duration=None,
+            md5=ImageProcessor.compute_md5(path),
         )
     except Exception:
         return None
@@ -313,6 +317,9 @@ async def _upsert_photos(
             photo.media_type = info.media_type
             if info.duration is not None:
                 photo.duration = info.duration
+            # MD5 for dedup / phone-backup checks; refresh if missing or path reused
+            if info.md5 is not None:
+                photo.md5_hash = info.md5
 
             # ── XMP sidecar read-in (non-destructive; only fills NULL fields) ──
             try:
