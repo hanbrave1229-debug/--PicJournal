@@ -58,39 +58,56 @@ async def extract_video_frame(
 
     Path(output_jpeg).parent.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        "ffmpeg",
-        "-y",                          # overwrite without prompting
-        "-ss", str(seek_seconds),      # seek before input (fast)
-        "-i", video_path,
-        "-frames:v", "1",              # extract exactly one frame
-        "-q:v", "2",                   # JPEG quality (2 = high, 31 = low)
-        "-vf", "scale='min(1920,iw)':-2",  # cap width at 1920px, keep AR
-        output_jpeg,
-    ]
+    # NOTE: we run ffmpeg via exec (no shell), so the scale filter must NOT be
+    # shell-quoted. The comma inside min() must be backslash-escaped, otherwise
+    # ffmpeg treats it as a filtergraph separator and fails with
+    # "-22 Invalid argument". (Shell quotes like 'min(1920,iw)' would be passed
+    # literally here and also break parsing.)
+    _scale = r"scale=min(1920\,iw):-2"  # cap width at 1920px, keep AR (even h)
 
-    async with _get_sem():
+    def _build_cmd(seek: float | None) -> list[str]:
+        cmd = ["ffmpeg", "-y"]
+        if seek and seek > 0:
+            cmd += ["-ss", str(seek)]   # seek before input (fast)
+        cmd += [
+            "-i", video_path,
+            "-frames:v", "1",
+            "-q:v", "2",
+            "-vf", _scale,
+            output_jpeg,
+        ]
+        return cmd
+
+    async def _run(cmd: list[str]) -> tuple[bool, str]:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-            )
             _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-            if proc.returncode != 0:
-                logger.warning(
-                    "FFmpeg frame extract failed for %s: %s",
-                    video_path,
-                    stderr.decode(errors="replace")[-300:],
-                )
-                return False
-            return Path(output_jpeg).exists()
         except asyncio.TimeoutError:
-            logger.warning("FFmpeg timed out for %s", video_path)
             try:
                 proc.kill()
             except Exception:
                 pass
+            return False, "timeout"
+        ok = proc.returncode == 0 and Path(output_jpeg).exists()
+        return ok, stderr.decode(errors="replace")[-300:]
+
+    async with _get_sem():
+        try:
+            # First try seeking; if it fails (e.g. seek past EOF on very short
+            # clips / live photos), retry grabbing the first frame.
+            ok, err = await _run(_build_cmd(seek_seconds))
+            if ok:
+                return True
+            ok2, err2 = await _run(_build_cmd(None))
+            if ok2:
+                return True
+            logger.warning(
+                "FFmpeg frame extract failed for %s: %s | %s", video_path, err, err2
+            )
             return False
         except Exception as exc:
             logger.warning("FFmpeg error for %s: %s", video_path, exc)
