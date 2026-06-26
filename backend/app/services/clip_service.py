@@ -79,7 +79,10 @@ async def run_batch_embedding(force: bool = False) -> dict:
     Returns progress dict: {total, embedded, failed}.
     """
     async with AsyncSessionLocal() as session:
-        stmt = select(Photo.id, Photo.file_path).where(Photo.is_deleted.is_(False))
+        stmt = select(
+            Photo.id, Photo.file_path, Photo.media_type,
+            Photo.thumbnail_1080, Photo.thumbnail_256,
+        ).where(Photo.is_deleted.is_(False))
         if not force:
             stmt = stmt.where(Photo.clip_embedding.is_(None))
         rows = (await session.execute(stmt)).all()
@@ -90,7 +93,16 @@ async def run_batch_embedding(force: bool = False) -> dict:
     logger.info("CLIP batch: %d photos to embed", total)
 
     for row in rows:
-        ok = await embed_photo(row.id, row.file_path)
+        # CLIP can only read images. For videos, embed the generated keyframe
+        # thumbnail (1080 preferred, then 256) so videos are searchable too.
+        if row.media_type == "video":
+            image_path = row.thumbnail_1080 or row.thumbnail_256
+            if not image_path:
+                failed += 1
+                continue
+        else:
+            image_path = row.file_path
+        ok = await embed_photo(row.id, image_path)
         if ok:
             embedded += 1
         else:
