@@ -66,7 +66,7 @@
 | AI 打标 | ✅ 完善 | VLM 自由描述 + 末尾关键词行，写回 ai_caption/ai_tags + XMP |
 | 标签搜索 | ✅ 完善 | LIKE 匹配 ai_caption/ai_tags，无需 AI 服务 |
 | AI 搜索 | ✅ 完善 | LLM 自然语言→SQL where 条件，需激活 AI 配置 |
-| 向量搜索 | 🟡 引擎就绪 | CLIP ViT-B/32 ONNX 已下载、可用；**但全库嵌入未跑，暂搜不出结果** |
+| 向量搜索 | ✅ 完善 | CLIP ViT-B/32 ONNX；全库已嵌入（照片用原图，视频用关键帧缩略图）；Gallery「向量」模式可自然语言搜图，照片+视频均可搜 |
 | 认证 | 🟡 中间档 | JWT 单管理员，HttpOnly cookie + header 双通道；图片接口免 token；**无多用户管理** |
 | XMP 回写 | ✅ | sidecar 同步描述+标签 |
 | 回收站/归档 | ✅ 完善 | 软删除双轨（is_deleted / is_archived） |
@@ -75,10 +75,10 @@
 | 相册分享 | ✅ 完善 | AlbumShare(token+bcrypt密码+过期)；管理API + 公开免登录API(白名单)；分享对话框(设密码/有效期/复制/撤销) + 公开访问页 /share/:token；过期访问返回410；每日清理过期链接 |
 
 ### 当前已知短板
-- **CLIP 全库嵌入批处理未跑过** → 向量搜索搜不出结果（引擎和模型都就绪，缺一次批量 embedding）
 - **手机备份非真后台** → PWA 只能"打开 App 点一下同步"，真后台自动需原生 App（路线图 C）
-- **存量 md5_hash 未全填** → 老照片需一次全库重扫才会补齐 MD5（新 scanner 入库即算）
 - **多用户被砍** → 认证只保留单管理员（UserRole 已留 ADMIN/USER 基础）
+
+> 已解决：CLIP 全库嵌入已完成（照片+视频）；存量 md5_hash 已全库重扫补齐；视频抽帧 -22 bug 已修复（缩略图全生成）
 
 ---
 
